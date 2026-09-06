@@ -1,5 +1,6 @@
 from enum import Enum
 
+from ._laundry_commands import LaundryCommandsMixin
 from .appliance import Appliance
 
 # Machine State
@@ -223,7 +224,7 @@ WRINKLE_SHIELD_MAP = {
 }
 
 
-class Dryer(Appliance):
+class Dryer(LaundryCommandsMixin, Appliance):
     def get_machine_state(self) -> MachineState | None:
         state_raw = self._get_attribute(ATTR_MACHINE_STATE)
         if state_raw is None:

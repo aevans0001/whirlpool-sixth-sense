@@ -1,5 +1,6 @@
 from enum import Enum
 
+from ._laundry_commands import LaundryCommandsMixin
 from .appliance import Appliance
 
 ATTR_CYCLE_STATUS_SENSING = "WashCavity_CycleStatusSensing"
@@ -76,11 +77,11 @@ MACHINE_STATE_MAP = {
     ATTRVAL_MACHINE_STATE_CUSTOMER_FOCUS_MODE: MachineState.CustomerFocusMode,
     ATTRVAL_MACHINE_STATE_DEMO_MODE: MachineState.DemoMode,
     ATTRVAL_MACHINE_STATE_HARD_STOP_OR_ERROR: MachineState.HardStopOrError,
-    ATTRVAL_MACHINE_STATE_SYSTEM_INIT: MachineState.SystemInit
+    ATTRVAL_MACHINE_STATE_SYSTEM_INIT: MachineState.SystemInit,
 }
 
 
-class Washer(Appliance):
+class Washer(LaundryCommandsMixin, Appliance):
     def get_machine_state(self) -> MachineState | None:
         state_raw = self._get_attribute(ATTR_CYCLE_STATUS_MACHINE_STATE)
         if state_raw is None:
