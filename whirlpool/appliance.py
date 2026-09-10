@@ -144,7 +144,7 @@ class Appliance:
     def has_attribute(self, attribute: str) -> bool:
         """Check for attribute in local data dictionary"""
         if not self._data_dict:
-            LOGGER.error("No data available")
+            LOGGER.debug("No appliance data available yet")
             return False
         return attribute in self._data_dict.get("attributes", {})
 
