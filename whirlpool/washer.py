@@ -20,7 +20,16 @@ ATTR_DISPENSE_1_CONCENTRATION = "WashCavity_OpSetBulkDispense1Concentration"
 ATTR_DISPENSE_2_CONCENTRATION = "WashCavity_OpSetBulkDispense2Concentration"
 ATTR_DISPENSE_2_SELECTION = "WashCavity_OpSetBulkDispense2Selection"
 ATTR_CYCLE_SELECT = "WashCavity_CycleSetCycleSelect"
+ATTR_FRESHENING_SELECT = "WashCavity_CycleSetFresheningSelect"
+ATTR_CHANGE_STATUS_FRESHENING = "WashCavity_ChangeStatusFreshening"
 ATTR_DOOR_OPEN = "Cavity_OpStatusDoorOpen"
+
+# Fan Fresh is proven only for this exact model. Keep the gate here, next to
+# the model-specific cycle matrix, so generic Washer instances cannot expose
+# a setting merely because a similarly named attribute happens to be present.
+FAN_FRESH_SUPPORTED_MODEL = "WFW9620HBK3"
+FRESHENING_VALUES = {"off": 0, "on": 1}
+FRESHENING_REVERSE = {value: key for key, value in FRESHENING_VALUES.items()}
 
 # DDM-proven combined What-to-Wash / How-to-Wash values for WFW9620HBK3.
 WASH_CYCLE_MATRIX = {
@@ -195,6 +204,37 @@ class Washer(LaundryCommandsMixin, Appliance):
     def get_wash_cycle_pair(self) -> tuple[str, str] | None:
         raw = self._get_int_attribute(ATTR_CYCLE_SELECT)
         return None if raw is None else WASH_CYCLE_REVERSE.get(raw)
+
+    def is_fan_fresh_model_supported(self) -> bool:
+        """Return whether this is the exact model proven to support Fan Fresh."""
+        return self.appliance_info.model_number == FAN_FRESH_SUPPORTED_MODEL
+
+    def supports_fan_fresh(self) -> bool:
+        """Return whether this model currently exposes the required DDM fields."""
+        return (
+            self.is_fan_fresh_model_supported()
+            and self.has_attribute(ATTR_FRESHENING_SELECT)
+            and self.has_attribute(ATTR_CHANGE_STATUS_FRESHENING)
+        )
+
+    def get_fan_fresh(self) -> str | None:
+        """Return the current Fan Fresh option."""
+        raw = self._get_int_attribute(ATTR_FRESHENING_SELECT)
+        return None if raw is None else FRESHENING_REVERSE.get(raw)
+
+    def fan_fresh_changeable(self) -> bool | None:
+        """Return the appliance-reported Fan Fresh changeability flag."""
+        return self.attr_value_to_bool(
+            self._get_attribute(ATTR_CHANGE_STATUS_FRESHENING)
+        )
+
+    async def set_fan_fresh(self, option: str) -> bool:
+        """Set Fan Fresh using the exact WFW9620HBK3 DDM enum mapping."""
+        if not self.supports_fan_fresh():
+            return False
+        return await self._set_enum_attribute(
+            ATTR_FRESHENING_SELECT, FRESHENING_VALUES, option
+        )
 
     async def set_wash_cycle_pair(self, what: str, how: str) -> bool:
         value = WASH_CYCLE_MATRIX.get((what, how))
