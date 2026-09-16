@@ -22,6 +22,8 @@ ATTR_DISPENSE_2_SELECTION = "WashCavity_OpSetBulkDispense2Selection"
 ATTR_CYCLE_SELECT = "WashCavity_CycleSetCycleSelect"
 ATTR_FRESHENING_SELECT = "WashCavity_CycleSetFresheningSelect"
 ATTR_CHANGE_STATUS_FRESHENING = "WashCavity_ChangeStatusFreshening"
+ATTR_STEAM_ENABLE = "Cavity_CycleSetSteamEnable"
+ATTR_STEAM_CHANGEABLE = "Cavity_ChangeStatusSteamChangeable"
 ATTR_DOOR_OPEN = "Cavity_OpStatusDoorOpen"
 
 # Fan Fresh is proven only for this exact model. Keep the gate here, next to
@@ -30,6 +32,12 @@ ATTR_DOOR_OPEN = "Cavity_OpStatusDoorOpen"
 FAN_FRESH_SUPPORTED_MODEL = "WFW9620HBK3"
 FRESHENING_VALUES = {"off": 0, "on": 1}
 FRESHENING_REVERSE = {value: key for key, value in FRESHENING_VALUES.items()}
+
+# Steam Enable is DDM-proven for the same exact model (WFW9620HBK3 capture:
+# Cavity_CycleSetSteamEnable="0", Cavity_ChangeStatusSteamChangeable="1").
+STEAM_SUPPORTED_MODEL = "WFW9620HBK3"
+STEAM_ENABLE_VALUES = {"off": 0, "on": 1}
+STEAM_ENABLE_REVERSE = {value: key for key, value in STEAM_ENABLE_VALUES.items()}
 
 # DDM-proven combined What-to-Wash / How-to-Wash values for WFW9620HBK3.
 WASH_CYCLE_MATRIX = {
@@ -234,6 +242,37 @@ class Washer(LaundryCommandsMixin, Appliance):
             return False
         return await self._set_enum_attribute(
             ATTR_FRESHENING_SELECT, FRESHENING_VALUES, option
+        )
+
+    def is_steam_model_supported(self) -> bool:
+        """Return whether this is the exact model proven to support Steam Enable."""
+        return self.appliance_info.model_number == STEAM_SUPPORTED_MODEL
+
+    def supports_steam(self) -> bool:
+        """Return whether this model currently exposes the required DDM fields."""
+        return (
+            self.is_steam_model_supported()
+            and self.has_attribute(ATTR_STEAM_ENABLE)
+            and self.has_attribute(ATTR_STEAM_CHANGEABLE)
+        )
+
+    def get_steam(self) -> str | None:
+        """Return the current Steam Enable option."""
+        raw = self._get_int_attribute(ATTR_STEAM_ENABLE)
+        return None if raw is None else STEAM_ENABLE_REVERSE.get(raw)
+
+    def steam_changeable(self) -> bool | None:
+        """Return the appliance-reported Steam Enable changeability flag."""
+        return self.attr_value_to_bool(
+            self._get_attribute(ATTR_STEAM_CHANGEABLE)
+        )
+
+    async def set_steam(self, option: str) -> bool:
+        """Set Steam Enable using the exact WFW9620HBK3 DDM enum mapping."""
+        if not self.supports_steam():
+            return False
+        return await self._set_enum_attribute(
+            ATTR_STEAM_ENABLE, STEAM_ENABLE_VALUES, option
         )
 
     async def set_wash_cycle_pair(self, what: str, how: str) -> bool:

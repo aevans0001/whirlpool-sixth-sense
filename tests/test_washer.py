@@ -90,6 +90,97 @@ async def test_command_blocked_before_first_fetch(
     assert await washer.start() is False
 
 
+async def test_steam_setter_model_blocked(
+    auth: Auth, backend_selector: BackendSelector, client_session_fixture
+):
+    """Steam Enable setter returns False for non-WFW9620HBK3 model numbers.
+    Proves the model gate in is_steam_model_supported() and supports_steam()."""
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said="TESTSTEAM",
+        name="Generic washer",
+        data_model="API144",
+        category="Laundry",
+        model_number="OTHER_MODEL",
+        serial_number="TEST",
+    )
+    washer = Washer(backend_selector, auth, client_session_fixture, info)
+    assert not washer.is_steam_model_supported()
+    assert not washer.supports_steam()
+    assert await washer.set_steam("on") is False
+
+
+@pytest.mark.parametrize(
+    ["option", "expected_value"],
+    [
+        ("on", "1"),
+        ("off", "0"),
+    ],
+)
+async def test_steam_setter(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+    option: str,
+    expected_value: str,
+):
+    """Exact-payload test for set_steam() on WFW9620HBK3.
+
+    Proves both values from the DDM-evidence enum (off=0, on=1) reach the
+    wire as Cavity_CycleSetSteamEnable. Fixture data provides both required
+    attributes so supports_steam() returns True.
+    """
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said="SAIDSTEAM1",
+        name="Steam Washer",
+        data_model="API144",
+        category="Laundry",
+        model_number="WFW9620HBK3",
+        serial_number="TEST",
+    )
+    washer = Washer(backend_selector, auth, client_session_fixture, info)
+
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url("SAIDSTEAM1"),
+        payload={
+            "attributes": {
+                "Cavity_CycleSetSteamEnable": {"value": "0", "updateTime": 1000},
+                "Cavity_ChangeStatusSteamChangeable": {"value": "1", "updateTime": 1000},
+                "XCat_RemoteSetRemoteControlEnable": {"value": "0", "updateTime": 1000},
+            }
+        },
+    )
+    await washer.fetch_data()
+
+    assert washer.is_steam_model_supported()
+    assert washer.supports_steam()
+
+    expected_payload = {
+        "json": {
+            "body": {"Cavity_CycleSetSteamEnable": expected_value},
+            "header": {"said": washer.said, "command": "setAttributes"},
+        }
+    }
+    post_request_call_kwargs = {
+        "url": backend_selector.appliance_command_url,
+        "method": "POST",
+        "data": None,
+        "json": expected_payload["json"],
+        "headers": auth.create_headers(),
+    }
+    url = backend_selector.appliance_command_url
+
+    aiointercept_mock.post(url, payload=expected_payload)
+    assert await washer.set_steam(option) is True
+
+    aiointercept_mock.assert_called_with(**post_request_call_kwargs)
+    assert len(aiointercept_mock.requests[("POST", URL(url))]) == 1
+
+
 def test_no_remote_control_enable_setter():
     """Reflection guard: fails the build if a setter for Remote Enable
     is ever accidentally added, per this fork's safety boundary."""

@@ -223,6 +223,22 @@ WRINKLE_SHIELD_MAP = {
     ATTRVAL_WRINKLE_SHIELD_ON_WITH_STEAM: WrinkleShield.OnWithSteam,
 }
 
+# String keys used by set_wrinkle_shield(); values are the wire strings.
+# DDM-proven on WED9620HBK2: DryCavity_ChangeStatusWrinkleShield="1" (changeable);
+# DryCavity_CycleSetWrinkleShield="0" at Setting state; Steam accessible via
+# Cavity_ChangeStatusSteamChangeable="1" co-present in the same DDM capture.
+WRINKLE_SHIELD_SET_VALUES = {
+    "off": ATTRVAL_WRINKLE_SHIELD_OFF,
+    "on": ATTRVAL_WRINKLE_SHIELD_ON,
+    "on_with_steam": ATTRVAL_WRINKLE_SHIELD_ON_WITH_STEAM,
+}
+
+WRINKLE_SHIELD_DISPLAY = {
+    WrinkleShield.Off: "off",
+    WrinkleShield.On: "on",
+    WrinkleShield.OnWithSteam: "on_with_steam",
+}
+
 
 class Dryer(LaundryCommandsMixin, Appliance):
     def get_machine_state(self) -> MachineState | None:
@@ -338,3 +354,21 @@ class Dryer(LaundryCommandsMixin, Appliance):
         if shield_raw is None:
             return None
         return WRINKLE_SHIELD_MAP.get(shield_raw, None)
+
+    def get_wrinkle_shield_str(self) -> str | None:
+        """Return current WrinkleShield as a string option key for HA selects."""
+        shield = self.get_wrinkle_shield()
+        return None if shield is None else WRINKLE_SHIELD_DISPLAY.get(shield)
+
+    async def set_wrinkle_shield(self, option: str) -> bool:
+        """Set WrinkleShield (off / on / on_with_steam).
+
+        All three values are DDM-proven on WED9620HBK2:
+          DryCavity_CycleSetWrinkleShield wire key confirmed present;
+          DryCavity_ChangeStatusWrinkleShield = "1" (changeable);
+          Cavity_ChangeStatusSteamChangeable = "1" (steam accessible via value "2").
+        """
+        value = WRINKLE_SHIELD_SET_VALUES.get(option)
+        if value is None or not self.get_wrinkle_shield_changeable():
+            return False
+        return await self.send_attributes({ATTR_WRINKLE_SHIELD: value})
