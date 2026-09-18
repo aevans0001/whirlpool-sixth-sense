@@ -66,6 +66,29 @@ class _AttributeSource(Protocol):
     async def send_attributes(self, attributes: dict[str, str]) -> bool: ...
 
 
+class _LaundryCommandHost(_AttributeSource, Protocol):
+    """Structural type for what the four command methods need from `self`.
+
+    Every method in the mixin annotates its own `self`, which means a type
+    checker resolves attribute access against the annotation rather than
+    against LaundryCommandsMixin. start/pause/resume/cancel call
+    self._send_operation(...), which is defined on the mixin and not on
+    Appliance, so annotating them with _AttributeSource alone left those
+    four calls unresolvable even though they are correct at runtime.
+
+    This Protocol extends _AttributeSource with that one extra member, so
+    the composed classes (whirlpool.washer.Washer, whirlpool.dryer.Dryer)
+    satisfy it through exactly what they already provide: four methods
+    inherited from Appliance plus _send_operation from this mixin. Keeping
+    it separate from _AttributeSource means _send_operation itself can go on
+    annotating its own `self` as _AttributeSource, so no Protocol here has
+    to refer to itself. Both are type-only declarations - every member is a
+    stub and no runtime behaviour changes.
+    """
+
+    async def _send_operation(self, operation: str) -> bool: ...
+
+
 class LaundryCommandsMixin:
     """Start/Pause/Resume/Cancel + read-only Remote Enable status.
 
@@ -108,18 +131,18 @@ class LaundryCommandsMixin:
             return False
         return await self.send_attributes({ATTR_OPERATIONS: operation})
 
-    async def start(self: _AttributeSource) -> bool:
+    async def start(self: _LaundryCommandHost) -> bool:
         """Start the currently-set cycle (Cavity_OpSetOperations = 2)."""
         return await self._send_operation(OPERATION_START)
 
-    async def pause(self: _AttributeSource) -> bool:
+    async def pause(self: _LaundryCommandHost) -> bool:
         """Pause the running cycle (Cavity_OpSetOperations = 5)."""
         return await self._send_operation(OPERATION_PAUSE)
 
-    async def resume(self: _AttributeSource) -> bool:
+    async def resume(self: _LaundryCommandHost) -> bool:
         """Resume a paused cycle (Cavity_OpSetOperations = 6)."""
         return await self._send_operation(OPERATION_RESUME)
 
-    async def cancel(self: _AttributeSource) -> bool:
+    async def cancel(self: _LaundryCommandHost) -> bool:
         """Cancel the current cycle (Cavity_OpSetOperations = 1)."""
         return await self._send_operation(OPERATION_CANCEL)

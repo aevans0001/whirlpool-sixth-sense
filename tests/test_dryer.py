@@ -8,15 +8,6 @@ from whirlpool.appliancesmanager import AppliancesManager
 from whirlpool.auth import Auth
 from whirlpool.backendselector import BackendSelector
 from whirlpool.dryer import (
-    ATTRVAL_CYCLE_BULKY_HEAVY_DUTY,
-    ATTRVAL_CYCLE_BULKY_ITEMS,
-    ATTRVAL_CYCLE_COLORS_BRIGHTS,
-    ATTRVAL_CYCLE_COLORS_HEAVY_DUTY,
-    ATTRVAL_CYCLE_DELICATES,
-    ATTRVAL_CYCLE_DELICATES_HEAVY_DUTY,
-    ATTRVAL_CYCLE_STEAM_REFRESH,
-    ATTRVAL_CYCLE_TOWELS_HEAVY_DUTY,
-    ATTRVAL_CYCLE_WHITES_HEAVY_DUTY,
     DRY_CYCLE_PAIR_MAP,
     DRY_CYCLE_PAIR_REVERSE,
     Cycle,
@@ -199,7 +190,10 @@ async def test_wrinkle_shield_setter_blocked_when_not_changeable(
         payload={
             "attributes": {
                 "DryCavity_CycleSetWrinkleShield": {"value": "0", "updateTime": 1000},
-                "DryCavity_ChangeStatusWrinkleShield": {"value": "0", "updateTime": 1000},
+                "DryCavity_ChangeStatusWrinkleShield": {
+                    "value": "0",
+                    "updateTime": 1000,
+                },
                 "XCat_RemoteSetRemoteControlEnable": {"value": "0", "updateTime": 1000},
             }
         },
@@ -208,7 +202,10 @@ async def test_wrinkle_shield_setter_blocked_when_not_changeable(
 
     assert dryer.get_wrinkle_shield_changeable() is False
     assert await dryer.set_wrinkle_shield("on") is False
-    assert ("POST", URL(backend_selector.appliance_command_url)) not in aiointercept_mock.requests
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
 
 
 def test_no_remote_control_enable_setter():
@@ -280,7 +277,10 @@ async def test_delicates_sanitize_raises(
     dryer = appliances_manager.dryers[0]
     with pytest.raises(ValueError, match="Delicates"):
         await dryer.set_dry_cycle_pair("delicates", "sanitize")
-    assert ("POST", URL(backend_selector.appliance_command_url)) not in aiointercept_mock.requests
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +341,9 @@ async def test_utility_cycle_steam_refresh_sends_cycle_select(
     posted = aiointercept_mock.requests[("POST", URL(url))]
     assert len(posted) == 1
     for req in posted:
-        assert "DryCavity_CycleSetWrinkleShield" not in req.kwargs.get("json", {}).get("body", {})
+        assert "DryCavity_CycleSetWrinkleShield" not in req.kwargs.get("json", {}).get(
+            "body", {}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +422,10 @@ async def test_set_dryness_blocked_when_not_changeable(
 
     assert dryer.get_dryness_changeable() is False
     assert await dryer.set_dryness("normal") is False
-    assert ("POST", URL(backend_selector.appliance_command_url)) not in aiointercept_mock.requests
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
 
 
 # ---------------------------------------------------------------------------
@@ -519,7 +524,10 @@ async def test_set_temperature_blocked_when_not_changeable(
 
     assert dryer.get_temperature_changeable() is False
     assert await dryer.set_temperature("warm_mid") is False
-    assert ("POST", URL(backend_selector.appliance_command_url)) not in aiointercept_mock.requests
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
 
 
 # ---------------------------------------------------------------------------
@@ -587,7 +595,10 @@ async def test_set_dry_cycle_pair_blocked_when_not_changeable(
     assert dryer.get_cycle_changeable() is False  # fixture precondition
 
     assert await dryer.set_dry_cycle_pair("towels", "normal") is False
-    assert ("POST", URL(backend_selector.appliance_command_url)) not in aiointercept_mock.requests
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
 
 
 # ---------------------------------------------------------------------------
@@ -682,7 +693,10 @@ async def test_set_static_guard_blocked_when_not_changeable(
 
     assert dryer.get_static_guard_changeable() is False
     assert await dryer.set_static_guard("on") is False
-    assert ("POST", URL(backend_selector.appliance_command_url)) not in aiointercept_mock.requests
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
 
 
 # ---------------------------------------------------------------------------
@@ -777,7 +791,10 @@ async def test_set_eco_boost_blocked_when_not_changeable(
 
     assert dryer.get_eco_boost_changeable() is False
     assert await dryer.set_eco_boost("on") is False
-    assert ("POST", URL(backend_selector.appliance_command_url)) not in aiointercept_mock.requests
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
 
 
 # ---------------------------------------------------------------------------
@@ -822,7 +839,8 @@ async def test_set_manual_dry_time_blocked_when_not_changeable(
     client_session_fixture,
     aiointercept_mock: aiointercept,
 ):
-    """set_manual_dry_time() returns False when DryCavity_ChangeStatusManualDryTime='0'."""
+    """set_manual_dry_time() returns False when
+    DryCavity_ChangeStatusManualDryTime='0'."""
     from whirlpool.types import ApplianceInfo
 
     info = ApplianceInfo(
@@ -838,7 +856,10 @@ async def test_set_manual_dry_time_blocked_when_not_changeable(
         backend_selector.get_appliance_data_url("SAIDDRYER_MDTNC"),
         payload={
             "attributes": {
-                "DryCavity_ChangeStatusManualDryTime": {"value": "0", "updateTime": 1000},
+                "DryCavity_ChangeStatusManualDryTime": {
+                    "value": "0",
+                    "updateTime": 1000,
+                },
                 "XCat_RemoteSetRemoteControlEnable": {"value": "0", "updateTime": 1000},
             }
         },
@@ -847,4 +868,7 @@ async def test_set_manual_dry_time_blocked_when_not_changeable(
 
     assert dryer.get_manual_dry_time_changeable() is False
     assert await dryer.set_manual_dry_time(1800) is False
-    assert ("POST", URL(backend_selector.appliance_command_url)) not in aiointercept_mock.requests
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
