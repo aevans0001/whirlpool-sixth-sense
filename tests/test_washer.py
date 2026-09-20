@@ -922,6 +922,12 @@ async def test_set_wash_cycle_pair_sends_exact_wire_value(
     aiointercept_mock: aiointercept,
     client_session_fixture,
 ):
+    """set_wash_cycle_pair sends CycleSelect + all seven DDM defaults in one call.
+
+    Cycle 47 (Colors+Quick): confirmed DDM defaults from phase5c_ddm_results.json.
+    The official Whirlpool app writes all destination-cycle defaults atomically;
+    this test asserts the exact same seven-attribute body (LEVEL B evidence).
+    """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
     )
@@ -930,7 +936,19 @@ async def test_set_wash_cycle_pair_sends_exact_wire_value(
     assert await washer.set_wash_cycle_pair("colors", "quick") is True
     aiointercept_mock.assert_called_with(
         **_expected_call(
-            washer, auth, backend_selector, {"WashCavity_CycleSetCycleSelect": "47"}
+            washer,
+            auth,
+            backend_selector,
+            {
+                "WashCavity_CycleSetCycleSelect": "47",
+                "WashCavity_CycleSetTemperature": "2",
+                "WashCavity_CycleSetSpinSpeed": "4",
+                "WashCavity_CycleSetSoilLevel": "0",
+                "WashCavity_CycleSetPresoakTimed": "0",
+                "WashCavity_CycleSetExtraRinseSelect": "0",
+                "WashCavity_CycleSetFresheningSelect": "0",
+                "Cavity_CycleSetSteamEnable": "0",
+            },
         )
     )
 
@@ -985,31 +1003,64 @@ async def test_wash_cycle_pair_reports_none_during_utility_cycle(
 # --- Utility cycles --------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ["option", "expected_value"],
-    [("drain_spin", "8"), ("clean_washer", "20")],
-)
-async def test_set_utility_cycle_sends_exact_wire_value(
+async def test_set_utility_cycle_drain_spin_sends_exact_wire_value(
     auth: Auth,
     backend_selector: BackendSelector,
     aiointercept_mock: aiointercept,
     client_session_fixture,
-    option: str,
-    expected_value: str,
 ):
-    """Utility cycles are written to the same CycleSelect attribute."""
+    """Drain & Spin sends CycleSelect + three DDM defaults (no temp/soil/steam).
+
+    DDM CapabilityData for cycle 8 lists spin, extra_rinse, and freshening only.
+    The initialization payload must not include Temperature, SoilLevel, Presoak
+    or SteamEnable, which are absent from this cycle's capability entry entirely.
+    Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
+    """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
     )
     url = backend_selector.appliance_command_url
     aiointercept_mock.post(url, payload={})
-    assert await washer.set_utility_cycle(option) is True
+    assert await washer.set_utility_cycle("drain_spin") is True
     aiointercept_mock.assert_called_with(
         **_expected_call(
             washer,
             auth,
             backend_selector,
-            {"WashCavity_CycleSetCycleSelect": expected_value},
+            {
+                "WashCavity_CycleSetCycleSelect": "8",
+                "WashCavity_CycleSetSpinSpeed": "5",
+                "WashCavity_CycleSetExtraRinseSelect": "0",
+                "WashCavity_CycleSetFresheningSelect": "0",
+            },
+        )
+    )
+
+
+async def test_set_utility_cycle_clean_washer_sends_only_cycle_select(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """Clean Washer sends only CycleSelect — no option defaults exist for it.
+
+    DDM CapabilityData for cycle 20 has an empty Required and empty Optional
+    block. The payload must contain only CycleSelect and nothing else.
+    Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    url = backend_selector.appliance_command_url
+    aiointercept_mock.post(url, payload={})
+    assert await washer.set_utility_cycle("clean_washer") is True
+    aiointercept_mock.assert_called_with(
+        **_expected_call(
+            washer,
+            auth,
+            backend_selector,
+            {"WashCavity_CycleSetCycleSelect": "20"},
         )
     )
 
@@ -1315,3 +1366,320 @@ async def test_no_easy_iron_surface_exists():
         assert "Color15" not in value
         assert "SpinSpeedRpm" not in value
         assert "TemperatureDegrees" not in value
+
+
+# --- Cycle initialization payload ------------------------------------------
+# Wire values used in addition to the constants defined above.
+CYCLE_COLORS_NORMAL = 24   # WashCycleWhatToColorsBrightsHowToNormal
+CYCLE_COLORS_COLD_WASH = 44  # WashCycleWhatToColorsBrightsHowToColdWash
+CYCLE_COLORS_SANITIZE = 48   # WashCycleWhatToColorsBrightsHowToSanitize
+
+
+async def test_cycle_init_payload_colors_normal_sends_eight_key_body(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """Colors/Normal (24): full 8-key initialization body.
+
+    DDM CapabilityData for cycle 24 lists all seven option attributes with
+    defaults: Warm (2), High (4), Light (0), presoak/extra_rinse/fan_fresh/
+    steam all at 0. The payload must contain all eight keys.
+    Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    url = backend_selector.appliance_command_url
+    aiointercept_mock.post(url, payload={})
+    assert await washer.set_wash_cycle_pair("colors", "normal") is True
+    aiointercept_mock.assert_called_with(
+        **_expected_call(
+            washer,
+            auth,
+            backend_selector,
+            {
+                "WashCavity_CycleSetCycleSelect": "24",
+                "WashCavity_CycleSetTemperature": "2",
+                "WashCavity_CycleSetSpinSpeed": "4",
+                "WashCavity_CycleSetSoilLevel": "0",
+                "WashCavity_CycleSetPresoakTimed": "0",
+                "WashCavity_CycleSetExtraRinseSelect": "0",
+                "WashCavity_CycleSetFresheningSelect": "0",
+                "Cavity_CycleSetSteamEnable": "0",
+            },
+        )
+    )
+
+
+async def test_cycle_init_payload_delicates_normal_sends_eight_key_body(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """Delicates/Normal (5): live-proven 8-key payload.
+
+    LEVEL A evidence: the official Whirlpool app was observed writing cycle 5
+    with Temperature=2 (Warm), SpinSpeed=2 (Low/Slow), SoilLevel=1 (Normal),
+    and presoak/extra_rinse/fan_fresh/steam all at 0 in a single request.
+    This test locks that exact payload so a stale-default regression fails
+    loudly.
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    url = backend_selector.appliance_command_url
+    aiointercept_mock.post(url, payload={})
+    assert await washer.set_wash_cycle_pair("delicates", "normal") is True
+    aiointercept_mock.assert_called_with(
+        **_expected_call(
+            washer,
+            auth,
+            backend_selector,
+            {
+                "WashCavity_CycleSetCycleSelect": "5",
+                "WashCavity_CycleSetTemperature": "2",
+                "WashCavity_CycleSetSpinSpeed": "2",
+                "WashCavity_CycleSetSoilLevel": "1",
+                "WashCavity_CycleSetPresoakTimed": "0",
+                "WashCavity_CycleSetExtraRinseSelect": "0",
+                "WashCavity_CycleSetFresheningSelect": "0",
+                "Cavity_CycleSetSteamEnable": "0",
+            },
+        )
+    )
+
+
+async def test_cycle_init_payload_sanitize_omits_presoak_key(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """Colors/Sanitize (48): 7-key body — no PresoakTimed.
+
+    Sanitize variants declare presoak=False in their DDM CapabilityData, so
+    default_presoak is None and the key must be absent from the payload.
+    Including a stale presoak value from a previous cycle would be wrong.
+    Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    url = backend_selector.appliance_command_url
+    aiointercept_mock.post(url, payload={})
+    assert await washer.set_wash_cycle_pair("colors", "sanitize") is True
+    aiointercept_mock.assert_called_with(
+        **_expected_call(
+            washer,
+            auth,
+            backend_selector,
+            {
+                "WashCavity_CycleSetCycleSelect": "48",
+                "WashCavity_CycleSetTemperature": "4",
+                "WashCavity_CycleSetSpinSpeed": "5",
+                "WashCavity_CycleSetSoilLevel": "0",
+                "WashCavity_CycleSetExtraRinseSelect": "0",
+                "WashCavity_CycleSetFresheningSelect": "0",
+                "Cavity_CycleSetSteamEnable": "0",
+            },
+        )
+    )
+
+
+async def test_cycle_init_payload_coldwash_omits_steam_key(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """Colors/ColdWash (44): 7-key body — no SteamEnable.
+
+    ColdWash variants declare steam=False (Cavity_CycleSetSteamEnable absent
+    from their DDM CapabilityData), so default_steam is None and the key must
+    not appear in the payload. Sending a stale steam value to a ColdWash cycle
+    the appliance does not accept would produce undefined behaviour at Start.
+    Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    url = backend_selector.appliance_command_url
+    aiointercept_mock.post(url, payload={})
+    assert await washer.set_wash_cycle_pair("colors", "cold_wash") is True
+    aiointercept_mock.assert_called_with(
+        **_expected_call(
+            washer,
+            auth,
+            backend_selector,
+            {
+                "WashCavity_CycleSetCycleSelect": "44",
+                "WashCavity_CycleSetTemperature": "0",
+                "WashCavity_CycleSetSpinSpeed": "4",
+                "WashCavity_CycleSetSoilLevel": "0",
+                "WashCavity_CycleSetPresoakTimed": "0",
+                "WashCavity_CycleSetExtraRinseSelect": "0",
+                "WashCavity_CycleSetFresheningSelect": "0",
+            },
+        )
+    )
+
+
+async def test_cycle_capability_default_fields_cycle_24():
+    """Unit test: CycleCapability[24] holds DDM-proven defaults for all seven
+    option attributes (Colors/Normal: Warm, High/Fast, Light, all toggles off).
+    """
+    from whirlpool.washer import CYCLE_CAPABILITIES
+
+    cap = CYCLE_CAPABILITIES[CYCLE_COLORS_NORMAL]
+    assert cap.default_temperature == 2   # Warm
+    assert cap.default_spin_speed == 4    # High / Fast
+    assert cap.default_soil_level == 0    # Light
+    assert cap.default_presoak == 0
+    assert cap.default_extra_rinse == 0
+    assert cap.default_fan_fresh == 0
+    assert cap.default_steam == 0
+
+
+async def test_cycle_init_payload_unknown_cycle_returns_only_cycle_select(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """A cycle value absent from CYCLE_CAPABILITIES yields a 1-key payload.
+
+    Cycle 0 is not a DDM-defined value for this appliance. The payload builder
+    must not invent defaults for cycles it has no evidence for.
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    payload = washer._cycle_initialization_payload(0)
+    assert payload == {"WashCavity_CycleSetCycleSelect": "0"}
+
+
+@pytest.mark.parametrize("cycle", [3, 48, 69, 86, 92])
+async def test_cycle_capability_sanitize_omits_presoak_default(cycle: int):
+    """All five Sanitize variant cycles carry default_presoak=None.
+
+    PresoakTimed must not appear in the initialization payload for any
+    Sanitize cycle — the DDM declares it absent (presoak=False).
+    """
+    from whirlpool.washer import CYCLE_CAPABILITIES
+
+    cap = CYCLE_CAPABILITIES[cycle]
+    assert cap.default_presoak is None, (
+        f"Cycle {cycle} should have default_presoak=None (Sanitize, no presoak), "
+        f"got {cap.default_presoak!r}"
+    )
+
+
+@pytest.mark.parametrize("cycle", [18, 44, 50, 65, 82, 88])
+async def test_cycle_capability_coldwash_omits_steam_default(cycle: int):
+    """All six ColdWash variant cycles carry default_steam=None.
+
+    SteamEnable must not appear in the initialization payload for any ColdWash
+    cycle — the DDM declares Cavity_CycleSetSteamEnable absent (steam=False).
+    """
+    from whirlpool.washer import CYCLE_CAPABILITIES
+
+    cap = CYCLE_CAPABILITIES[cycle]
+    assert cap.default_steam is None, (
+        f"Cycle {cycle} should have default_steam=None (ColdWash, no steam), "
+        f"got {cap.default_steam!r}"
+    )
+
+
+async def test_cycle_init_payload_is_destination_only_not_a_diff(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """Initialization sends all defaults even when the appliance is already at
+    those values — no diff-against-current-state shortcut.
+
+    Live capture confirms SpinSpeed was written unchanged during a cycle 70→5
+    transition. This test creates a washer already at cycle 47's defaults and
+    re-selects cycle 47: the full 8-key body must still be sent.
+    """
+    washer = await _make_wfw_washer(
+        auth,
+        backend_selector,
+        client_session_fixture,
+        aiointercept_mock,
+        WashCavity_CycleSetCycleSelect=CYCLE_COLORS_QUICK,
+        WashCavity_CycleSetTemperature=2,
+        WashCavity_CycleSetSpinSpeed=4,
+        WashCavity_CycleSetSoilLevel=0,
+        WashCavity_CycleSetPresoakTimed=0,
+        WashCavity_CycleSetExtraRinseSelect=0,
+        WashCavity_CycleSetFresheningSelect=0,
+        **{"Cavity_CycleSetSteamEnable": 0},
+    )
+    url = backend_selector.appliance_command_url
+    aiointercept_mock.post(url, payload={})
+    # Every attribute already matches the destination default — still a full write.
+    assert await washer.set_wash_cycle_pair("colors", "quick") is True
+    aiointercept_mock.assert_called_with(
+        **_expected_call(
+            washer,
+            auth,
+            backend_selector,
+            {
+                "WashCavity_CycleSetCycleSelect": "47",
+                "WashCavity_CycleSetTemperature": "2",
+                "WashCavity_CycleSetSpinSpeed": "4",
+                "WashCavity_CycleSetSoilLevel": "0",
+                "WashCavity_CycleSetPresoakTimed": "0",
+                "WashCavity_CycleSetExtraRinseSelect": "0",
+                "WashCavity_CycleSetFresheningSelect": "0",
+                "Cavity_CycleSetSteamEnable": "0",
+            },
+        )
+    )
+
+
+async def test_set_wash_cycle_pair_returns_false_before_fetch(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """set_wash_cycle_pair returns False and sends nothing when fetch_data()
+    has never been called (has_attribute returns False for every attribute).
+    """
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said=WFW_SAID,
+        name="Test washer",
+        data_model="API144",
+        category="Laundry",
+        model_number=WFW_MODEL,
+        serial_number="TEST",
+    )
+    washer = Washer(backend_selector, auth, client_session_fixture, info)
+    # No fetch_data() — has_attribute(ATTR_CYCLE_SELECT) is False.
+    assert await washer.set_wash_cycle_pair("colors", "quick") is False
+    _assert_nothing_sent(aiointercept_mock, backend_selector)
+
+
+async def test_cycle_capability_regular_normal_includes_presoak_and_steam():
+    """Regular/Normal (1) has presoak=True and steam=True, confirming their
+    defaults (both 0) must appear in the initialization payload.
+
+    This is the baseline 'full-feature' cycle: any cycle that correctly carries
+    all seven default fields validates that presoak and steam omission is
+    specifically a Sanitize/ColdWash property and not a general default.
+    """
+    from whirlpool.washer import CYCLE_CAPABILITIES
+
+    cap = CYCLE_CAPABILITIES[CYCLE_REGULAR_NORMAL]
+    assert cap.presoak is True
+    assert cap.steam is True
+    assert cap.default_presoak == 0
+    assert cap.default_steam == 0

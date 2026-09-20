@@ -205,6 +205,12 @@ class CycleCapability:
 
     An empty value set, or a False flag, means the option does not exist for
     that cycle at all and must not be written while it is selected.
+
+    The default_* fields record the DDM-proven initialization value for each
+    option (the value the official Whirlpool app writes when selecting this
+    cycle). None means the attribute is absent from this cycle's DDM
+    CapabilityData and must not be included in the initialization payload.
+    All default values are LEVEL B (static DDM-proven); see phase5c_ddm_results.json.
     """
 
     temperatures: frozenset[int] = field(default=_NO_VALUES)
@@ -215,6 +221,14 @@ class CycleCapability:
     fan_fresh: bool = False
     steam: bool = False
     delay_time: bool = False
+    # DDM-proven initialization defaults. None = attribute absent for this cycle.
+    default_temperature: int | None = None
+    default_spin_speed: int | None = None
+    default_soil_level: int | None = None
+    default_presoak: int | None = None
+    default_extra_rinse: int | None = None
+    default_fan_fresh: int | None = None
+    default_steam: int | None = None
 
 
 def _wash_cycle_capability(
@@ -223,11 +237,19 @@ def _wash_cycle_capability(
     *,
     presoak: bool = True,
     steam: bool = True,
+    default_temperature: int | None = None,
+    default_spin_speed: int | None = None,
+    default_soil_level: int | None = None,
 ) -> CycleCapability:
     """Build a normal (non-utility) wash cycle capability entry.
 
     Every normal cycle in this DDM offers soil level, extra rinse, fan fresh
     and delay time, so only the parts that actually vary are parameters.
+
+    The fixed-at-zero defaults (extra_rinse, fan_fresh, presoak when supported,
+    steam when supported) are set automatically from the boolean capability flags,
+    matching the DDM pattern: every cycle initializes these to 0 (off) when the
+    attribute is present at all.
     """
     return CycleCapability(
         temperatures=temperatures,
@@ -238,76 +260,185 @@ def _wash_cycle_capability(
         fan_fresh=True,
         steam=steam,
         delay_time=True,
+        default_temperature=default_temperature,
+        default_spin_speed=default_spin_speed,
+        default_soil_level=default_soil_level,
+        default_presoak=0 if presoak else None,
+        default_extra_rinse=0,
+        default_fan_fresh=0,
+        default_steam=0 if steam else None,
     )
 
 
 CYCLE_CAPABILITIES: dict[int, CycleCapability] = {
-    # WashCycleNone - nothing selected, no options apply.
+    # WashCycleNone - nothing selected, no options apply. No initialization
+    # defaults (no cycle to initialize).
     0: CycleCapability(),
-    # Regular family: SpinSpeedLow is absent from all five.
-    1: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_NO_LOW),
-    2: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_NO_LOW),
-    3: _wash_cycle_capability(
-        _TEMPERATURES_SANITIZE, _SPIN_SPEEDS_NO_LOW, presoak=False
+    # Regular family: SpinSpeedLow absent from all five.
+    # DDM defaults from phase5c_ddm_results.json (LEVEL B, WPR4FTPCM383E).
+    1: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_NO_LOW,
+        default_temperature=2, default_spin_speed=5, default_soil_level=1,
     ),
-    4: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_NO_LOW),
+    2: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_NO_LOW,
+        default_temperature=3, default_spin_speed=5, default_soil_level=1,
+    ),
+    3: _wash_cycle_capability(
+        _TEMPERATURES_SANITIZE, _SPIN_SPEEDS_NO_LOW, presoak=False,
+        default_temperature=4, default_spin_speed=5, default_soil_level=0,
+    ),
+    4: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_NO_LOW,
+        default_temperature=2, default_spin_speed=5, default_soil_level=0,
+    ),
     18: _wash_cycle_capability(
-        _TEMPERATURES_ALL, _SPIN_SPEEDS_NO_LOW, steam=False
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_NO_LOW, steam=False,
+        default_temperature=0, default_spin_speed=5, default_soil_level=2,
     ),
     # Category base cycles.
-    5: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    10: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    11: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    16: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    22: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    24: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
+    5: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=2, default_spin_speed=2, default_soil_level=1,
+    ),
+    10: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=2, default_spin_speed=4, default_soil_level=2,
+    ),
+    11: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=2, default_spin_speed=5, default_soil_level=2,
+    ),
+    16: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=0, default_spin_speed=2, default_soil_level=0,
+    ),
+    22: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=2, default_spin_speed=4, default_soil_level=1,
+    ),
+    24: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=2, default_spin_speed=4, default_soil_level=0,
+    ),
     # Colors compound cycles.
-    44: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL, steam=False),
-    46: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    47: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
+    44: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL, steam=False,
+        default_temperature=0, default_spin_speed=4, default_soil_level=0,
+    ),
+    46: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=3, default_spin_speed=4, default_soil_level=0,
+    ),
+    47: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=2, default_spin_speed=4, default_soil_level=0,
+    ),
     48: _wash_cycle_capability(
-        _TEMPERATURES_SANITIZE, _SPIN_SPEEDS_ALL, presoak=False
+        _TEMPERATURES_SANITIZE, _SPIN_SPEEDS_ALL, presoak=False,
+        default_temperature=4, default_spin_speed=5, default_soil_level=0,
     ),
-    49: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
+    49: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=0, default_spin_speed=2, default_soil_level=0,
+    ),
     # Bulky compound cycles (Bulky+Sanitize does not exist).
-    50: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL, steam=False),
-    52: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    53: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    54: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
+    50: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL, steam=False,
+        default_temperature=0, default_spin_speed=4, default_soil_level=1,
+    ),
+    52: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=3, default_spin_speed=4, default_soil_level=1,
+    ),
+    53: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=2, default_spin_speed=4, default_soil_level=0,
+    ),
+    54: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=0, default_spin_speed=2, default_soil_level=0,
+    ),
     # Delicates compound cycles.
-    65: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL, steam=False),
-    67: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    68: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
+    65: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL, steam=False,
+        default_temperature=0, default_spin_speed=2, default_soil_level=1,
+    ),
+    67: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=3, default_spin_speed=2, default_soil_level=1,
+    ),
+    68: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=2, default_spin_speed=2, default_soil_level=0,
+    ),
     69: _wash_cycle_capability(
-        _TEMPERATURES_SANITIZE, _SPIN_SPEEDS_ALL, presoak=False
+        _TEMPERATURES_SANITIZE, _SPIN_SPEEDS_ALL, presoak=False,
+        default_temperature=4, default_spin_speed=5, default_soil_level=0,
     ),
-    70: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
+    70: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=0, default_spin_speed=2, default_soil_level=0,
+    ),
     # Towels compound cycles.
-    82: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL, steam=False),
-    84: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    85: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
+    82: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL, steam=False,
+        default_temperature=0, default_spin_speed=5, default_soil_level=2,
+    ),
+    84: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=3, default_spin_speed=5, default_soil_level=2,
+    ),
+    85: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=2, default_spin_speed=5, default_soil_level=0,
+    ),
     86: _wash_cycle_capability(
-        _TEMPERATURES_SANITIZE, _SPIN_SPEEDS_ALL, presoak=False
+        _TEMPERATURES_SANITIZE, _SPIN_SPEEDS_ALL, presoak=False,
+        default_temperature=4, default_spin_speed=5, default_soil_level=0,
     ),
-    87: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
+    87: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=0, default_spin_speed=2, default_soil_level=0,
+    ),
     # Whites compound cycles.
-    88: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL, steam=False),
-    90: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    91: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
-    92: _wash_cycle_capability(
-        _TEMPERATURES_SANITIZE, _SPIN_SPEEDS_ALL, presoak=False
+    88: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL, steam=False,
+        default_temperature=0, default_spin_speed=4, default_soil_level=2,
     ),
-    93: _wash_cycle_capability(_TEMPERATURES_ALL, _SPIN_SPEEDS_ALL),
+    90: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=3, default_spin_speed=4, default_soil_level=2,
+    ),
+    91: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=2, default_spin_speed=4, default_soil_level=0,
+    ),
+    92: _wash_cycle_capability(
+        _TEMPERATURES_SANITIZE, _SPIN_SPEEDS_ALL, presoak=False,
+        default_temperature=4, default_spin_speed=5, default_soil_level=0,
+    ),
+    93: _wash_cycle_capability(
+        _TEMPERATURES_ALL, _SPIN_SPEEDS_ALL,
+        default_temperature=0, default_spin_speed=2, default_soil_level=0,
+    ),
     # Utility cycles. Drain & Spin keeps spin / extra rinse / fan fresh only.
+    # DDM default: SpinSpeed=5(ExtraHigh), ExtraRinse=0, FresheningSelect=0.
+    # Temperature, SoilLevel, Presoak and Steam are absent from this cycle's
+    # CapabilityData entirely and must not be written.
     ATTRVAL_CYCLE_DRAIN_SPIN: CycleCapability(
         spin_speeds=_SPIN_SPEEDS_ALL,
         extra_rinse=True,
         fan_fresh=True,
         delay_time=True,
+        default_spin_speed=5,
+        default_extra_rinse=0,
+        default_fan_fresh=0,
     ),
     # Clean Washer with affresh declares no per-cycle options at all beyond an
     # optional delay. Nothing else may be written while it is selected, and the
     # DDM rule engine additionally excludes it from the Modify command (W6).
+    # No initialization defaults: no option attributes exist for this cycle.
     ATTRVAL_CYCLE_CLEAN_WASHER: CycleCapability(delay_time=True),
 }
 
@@ -496,11 +627,58 @@ class Washer(LaundryCommandsMixin, Appliance):
         """Return whether a utility cycle (Drain & Spin / Clean Washer) is set."""
         return self.get_utility_cycle() is not None
 
+    def _cycle_initialization_payload(self, wire: int) -> dict[str, str]:
+        """Build the full attribute payload for switching to cycle ``wire``.
+
+        Returns a dict containing CycleSelect plus every option attribute that
+        has a DDM-proven default for this cycle. Attributes absent from the
+        cycle's DDM CapabilityData (default_* field is None) are omitted, so
+        the appliance never receives an attribute it did not declare.
+
+        The design intent is destination-only initialization: every present
+        default is written even when the current value is already the same,
+        mirroring the official Whirlpool app's observed behavior (live capture
+        confirms SpinSpeed was written unchanged during a 70→5 transition).
+
+        Evidence basis: LEVEL B (DDM-proven). Live confirmation of the full
+        seven-attribute payload is required before trusting this in production;
+        see the open questions in WHIRLPOOL_WASHER_SPECIALTY_CYCLE_DESIGN.md §9.
+
+        This method is intentionally private: callers use set_wash_cycle_pair()
+        and set_utility_cycle(), which apply the necessary model/fetch guards.
+        """
+        payload: dict[str, str] = {ATTR_CYCLE_SELECT: str(wire)}
+        cap = CYCLE_CAPABILITIES.get(wire)
+        if cap is None:
+            return payload
+        if cap.default_temperature is not None:
+            payload[ATTR_TEMPERATURE] = str(cap.default_temperature)
+        if cap.default_spin_speed is not None:
+            payload[ATTR_SPIN_SPEED] = str(cap.default_spin_speed)
+        if cap.default_soil_level is not None:
+            payload[ATTR_SOIL_LEVEL] = str(cap.default_soil_level)
+        if cap.default_presoak is not None:
+            payload[ATTR_PRESOAK] = str(cap.default_presoak)
+        if cap.default_extra_rinse is not None:
+            payload[ATTR_EXTRA_RINSE] = str(cap.default_extra_rinse)
+        if cap.default_fan_fresh is not None:
+            payload[ATTR_FRESHENING_SELECT] = str(cap.default_fan_fresh)
+        if cap.default_steam is not None:
+            payload[ATTR_STEAM_ENABLE] = str(cap.default_steam)
+        return payload
+
     async def set_utility_cycle(self, utility: str) -> bool:
         """Select a utility cycle ('drain_spin' or 'clean_washer').
 
         Writes the same wire attribute as a normal cycle, which is what the
         appliance expects - the separation is semantic, not protocol-level.
+
+        Sends one combined send_attributes() call carrying CycleSelect plus
+        every option default for this utility cycle (from the DDM), initializing
+        all applicable attributes atomically in a single request. This matches
+        the official Whirlpool app's behavior (LEVEL A: live capture confirmed
+        multi-attribute initialization for normal cycles; utility-cycle behavior
+        is LEVEL B until live-captured).
 
         Raises ValueError for an unknown utility cycle key. Returns False when
         the model is not WFW9620HBK3, when no data has been fetched, or when
@@ -515,7 +693,9 @@ class Washer(LaundryCommandsMixin, Appliance):
             return False
         if self.cycle_select_changeable() is not True:
             return False
-        return await self.send_attributes({ATTR_CYCLE_SELECT: str(value)})
+        return await self.send_attributes(
+            self._cycle_initialization_payload(value)
+        )
 
     # ------------------------------------------------------------------
     # Appliance-reported changeability flags
@@ -930,6 +1110,14 @@ class Washer(LaundryCommandsMixin, Appliance):
     async def set_wash_cycle_pair(self, what: str, how: str) -> bool:
         """Set the cycle by What+How pair.
 
+        Sends one combined send_attributes() call carrying CycleSelect plus
+        every option default for the destination cycle (from the DDM),
+        initializing all applicable attributes atomically in a single request.
+        This matches the official Whirlpool app's observed behavior (LEVEL A:
+        live capture confirmed a seven-attribute payload for cycle transitions,
+        with SpinSpeed written even when unchanged, confirming destination-only
+        semantics rather than a diff against current state).
+
         Raises ValueError for the DDM-absent Bulky+Sanitize combination and
         for any other unknown pair, rather than silently coercing it to
         something the appliance would accept. Mirrors the equivalent guard in
@@ -950,7 +1138,9 @@ class Washer(LaundryCommandsMixin, Appliance):
             raise ValueError(f"Unknown wash cycle combination: {what!r}/{how!r}")
         if not self.has_attribute(ATTR_CYCLE_SELECT):
             return False
-        return await self.send_attributes({ATTR_CYCLE_SELECT: str(value)})
+        return await self.send_attributes(
+            self._cycle_initialization_payload(value)
+        )
 
     def get_dispense_1_enable(self) -> str | None:
         raw = self._get_int_attribute(ATTR_DISPENSE_1_ENABLE)
