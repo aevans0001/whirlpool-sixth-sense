@@ -922,11 +922,14 @@ async def test_set_wash_cycle_pair_sends_exact_wire_value(
     aiointercept_mock: aiointercept,
     client_session_fixture,
 ):
-    """set_wash_cycle_pair sends CycleSelect + all seven DDM defaults in one call.
+    """set_wash_cycle_pair sends CycleSelect + all nine DDM defaults in one call.
 
     Cycle 47 (Colors+Quick): confirmed DDM defaults from phase5c_ddm_results.json.
     The official Whirlpool app writes all destination-cycle defaults atomically;
-    this test asserts the exact same seven-attribute body (LEVEL B evidence).
+    this test asserts the exact same nine-attribute body plus CycleSelect
+    (LEVEL B evidence). Specialty-clear fields (DownloadAndGo=0,
+    SpecialtyCycleId=0) are always included to atomically exit any active
+    specialty cycle on the appliance.
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
@@ -941,6 +944,8 @@ async def test_set_wash_cycle_pair_sends_exact_wire_value(
             backend_selector,
             {
                 "WashCavity_CycleSetCycleSelect": "47",
+                "Cavity_CycleSetDownloadAndGo": "0",
+                "Cavity_CycleSetSpecialtyCycleId": "0",
                 "WashCavity_CycleSetTemperature": "2",
                 "WashCavity_CycleSetSpinSpeed": "4",
                 "WashCavity_CycleSetSoilLevel": "0",
@@ -1381,17 +1386,19 @@ CYCLE_COLORS_COLD_WASH = 44  # WashCycleWhatToColorsBrightsHowToColdWash
 CYCLE_COLORS_SANITIZE = 48   # WashCycleWhatToColorsBrightsHowToSanitize
 
 
-async def test_cycle_init_payload_colors_normal_sends_eight_key_body(
+async def test_cycle_init_payload_colors_normal_sends_ten_key_body(
     auth: Auth,
     backend_selector: BackendSelector,
     aiointercept_mock: aiointercept,
     client_session_fixture,
 ):
-    """Colors/Normal (24): full 8-key initialization body.
+    """Colors/Normal (24): full 10-key initialization body.
 
     DDM CapabilityData for cycle 24 lists all seven option attributes with
     defaults: Warm (2), High (4), Light (0), presoak/extra_rinse/fan_fresh/
-    steam all at 0. The payload must contain all eight keys.
+    steam all at 0. The payload must contain all ten keys, including the two
+    specialty-clear fields (DownloadAndGo=0, SpecialtyCycleId=0) that
+    atomically deactivate any active Download & Go preset.
     Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
     """
     washer = await _make_wfw_washer(
@@ -1407,6 +1414,8 @@ async def test_cycle_init_payload_colors_normal_sends_eight_key_body(
             backend_selector,
             {
                 "WashCavity_CycleSetCycleSelect": "24",
+                "Cavity_CycleSetDownloadAndGo": "0",
+                "Cavity_CycleSetSpecialtyCycleId": "0",
                 "WashCavity_CycleSetTemperature": "2",
                 "WashCavity_CycleSetSpinSpeed": "4",
                 "WashCavity_CycleSetSoilLevel": "0",
@@ -1419,17 +1428,19 @@ async def test_cycle_init_payload_colors_normal_sends_eight_key_body(
     )
 
 
-async def test_cycle_init_payload_delicates_normal_sends_eight_key_body(
+async def test_cycle_init_payload_delicates_normal_sends_ten_key_body(
     auth: Auth,
     backend_selector: BackendSelector,
     aiointercept_mock: aiointercept,
     client_session_fixture,
 ):
-    """Delicates/Normal (5): live-proven 8-key payload.
+    """Delicates/Normal (5): live-proven 10-key payload.
 
     LEVEL A evidence: the official Whirlpool app was observed writing cycle 5
     with Temperature=2 (Warm), SpinSpeed=2 (Low/Slow), SoilLevel=1 (Normal),
     and presoak/extra_rinse/fan_fresh/steam all at 0 in a single request.
+    The two specialty-clear fields (DownloadAndGo=0, SpecialtyCycleId=0) are
+    additionally included to atomically deactivate any active specialty cycle.
     This test locks that exact payload so a stale-default regression fails
     loudly.
     """
@@ -1446,6 +1457,8 @@ async def test_cycle_init_payload_delicates_normal_sends_eight_key_body(
             backend_selector,
             {
                 "WashCavity_CycleSetCycleSelect": "5",
+                "Cavity_CycleSetDownloadAndGo": "0",
+                "Cavity_CycleSetSpecialtyCycleId": "0",
                 "WashCavity_CycleSetTemperature": "2",
                 "WashCavity_CycleSetSpinSpeed": "2",
                 "WashCavity_CycleSetSoilLevel": "1",
@@ -1464,11 +1477,13 @@ async def test_cycle_init_payload_sanitize_omits_presoak_key(
     aiointercept_mock: aiointercept,
     client_session_fixture,
 ):
-    """Colors/Sanitize (48): 7-key body — no PresoakTimed.
+    """Colors/Sanitize (48): 9-key body — no PresoakTimed.
 
     Sanitize variants declare presoak=False in their DDM CapabilityData, so
     default_presoak is None and the key must be absent from the payload.
     Including a stale presoak value from a previous cycle would be wrong.
+    The two specialty-clear fields (DownloadAndGo=0, SpecialtyCycleId=0) are
+    always present; PresoakTimed is not.
     Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
     """
     washer = await _make_wfw_washer(
@@ -1484,6 +1499,8 @@ async def test_cycle_init_payload_sanitize_omits_presoak_key(
             backend_selector,
             {
                 "WashCavity_CycleSetCycleSelect": "48",
+                "Cavity_CycleSetDownloadAndGo": "0",
+                "Cavity_CycleSetSpecialtyCycleId": "0",
                 "WashCavity_CycleSetTemperature": "4",
                 "WashCavity_CycleSetSpinSpeed": "5",
                 "WashCavity_CycleSetSoilLevel": "0",
@@ -1501,12 +1518,14 @@ async def test_cycle_init_payload_coldwash_omits_steam_key(
     aiointercept_mock: aiointercept,
     client_session_fixture,
 ):
-    """Colors/ColdWash (44): 7-key body — no SteamEnable.
+    """Colors/ColdWash (44): 9-key body — no SteamEnable.
 
     ColdWash variants declare steam=False (Cavity_CycleSetSteamEnable absent
     from their DDM CapabilityData), so default_steam is None and the key must
     not appear in the payload. Sending a stale steam value to a ColdWash cycle
     the appliance does not accept would produce undefined behaviour at Start.
+    The two specialty-clear fields (DownloadAndGo=0, SpecialtyCycleId=0) are
+    always present; SteamEnable is not.
     Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
     """
     washer = await _make_wfw_washer(
@@ -1522,6 +1541,8 @@ async def test_cycle_init_payload_coldwash_omits_steam_key(
             backend_selector,
             {
                 "WashCavity_CycleSetCycleSelect": "44",
+                "Cavity_CycleSetDownloadAndGo": "0",
+                "Cavity_CycleSetSpecialtyCycleId": "0",
                 "WashCavity_CycleSetTemperature": "0",
                 "WashCavity_CycleSetSpinSpeed": "4",
                 "WashCavity_CycleSetSoilLevel": "0",
@@ -1549,22 +1570,29 @@ async def test_cycle_capability_default_fields_cycle_24():
     assert cap.default_steam == 0
 
 
-async def test_cycle_init_payload_unknown_cycle_returns_only_cycle_select(
+async def test_cycle_init_payload_unknown_cycle_includes_specialty_clear(
     auth: Auth,
     backend_selector: BackendSelector,
     aiointercept_mock: aiointercept,
     client_session_fixture,
 ):
-    """A cycle value absent from CYCLE_CAPABILITIES yields a 1-key payload.
+    """A cycle value absent from CYCLE_CAPABILITIES yields a 3-key payload.
 
     Cycle 0 is not a DDM-defined value for this appliance. The payload builder
-    must not invent defaults for cycles it has no evidence for.
+    must not invent option defaults for cycles it has no evidence for, but must
+    still include the two specialty-clear fields (DownloadAndGo=0,
+    SpecialtyCycleId=0) that are unconditionally written on every normal/utility
+    cycle selection.
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
     )
     payload = washer._cycle_initialization_payload(0)
-    assert payload == {"WashCavity_CycleSetCycleSelect": "0"}
+    assert payload == {
+        "WashCavity_CycleSetCycleSelect": "0",
+        "Cavity_CycleSetDownloadAndGo": "0",
+        "Cavity_CycleSetSpecialtyCycleId": "0",
+    }
 
 
 @pytest.mark.parametrize("cycle", [3, 48, 69, 86, 92])
@@ -1610,7 +1638,7 @@ async def test_cycle_init_payload_is_destination_only_not_a_diff(
 
     Live capture confirms SpinSpeed was written unchanged during a cycle 70→5
     transition. This test creates a washer already at cycle 47's defaults and
-    re-selects cycle 47: the full 8-key body must still be sent.
+    re-selects cycle 47: the full 10-key body must still be sent.
     """
     washer = await _make_wfw_washer(
         auth,
@@ -1637,6 +1665,8 @@ async def test_cycle_init_payload_is_destination_only_not_a_diff(
             backend_selector,
             {
                 "WashCavity_CycleSetCycleSelect": "47",
+                "Cavity_CycleSetDownloadAndGo": "0",
+                "Cavity_CycleSetSpecialtyCycleId": "0",
                 "WashCavity_CycleSetTemperature": "2",
                 "WashCavity_CycleSetSpinSpeed": "4",
                 "WashCavity_CycleSetSoilLevel": "0",
@@ -1934,11 +1964,17 @@ def test_coats_jackets_and_lingerie_share_base_cycle_70_but_different_names():
     ["overrides", "expected"],
     [
         (
-            {"Cavity_CycleSetDownloadAndGo": "1", "Cavity_CycleSetCycleName": "Activewear"},
+            {
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "Activewear",
+            },
             "activewear",
         ),
         (
-            {"Cavity_CycleSetDownloadAndGo": "0", "Cavity_CycleSetCycleName": "Activewear"},
+            {
+                "Cavity_CycleSetDownloadAndGo": "0",
+                "Cavity_CycleSetCycleName": "Activewear",
+            },
             None,
         ),
         (
