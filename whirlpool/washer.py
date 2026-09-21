@@ -59,6 +59,14 @@ STEAM_SUPPORTED_MODEL = "WFW9620HBK3"
 STEAM_ENABLE_VALUES = {"off": 0, "on": 1}
 STEAM_ENABLE_REVERSE = {value: key for key, value in STEAM_ENABLE_VALUES.items()}
 
+# Specialty Cycles (Download & Go) - DDM-proven for WFW9620HBK3.
+# All three are NonEditable wire attributes per phase5c_ddm_results.json
+# (SAID=WPR4FTPCM383E, key 0x03080001/0x03080006/0x03080007).
+ATTR_DOWNLOAD_AND_GO    = "Cavity_CycleSetDownloadAndGo"
+ATTR_SPECIALTY_CYCLE_ID = "Cavity_CycleSetSpecialtyCycleId"
+ATTR_CYCLE_NAME         = "Cavity_CycleSetCycleName"
+SPECIALTY_CYCLE_SUPPORTED_MODEL = "WFW9620HBK3"
+
 # DDM-proven combined What-to-Wash / How-to-Wash values for WFW9620HBK3.
 WASH_CYCLE_MATRIX = {
     ("regular", "normal"): 1,
@@ -120,6 +128,49 @@ UTILITY_CYCLE_VALUES: dict[str, int] = {
 }
 UTILITY_CYCLE_REVERSE: dict[int, str] = {
     value: key for key, value in UTILITY_CYCLE_VALUES.items()
+}
+
+# ---------------------------------------------------------------------------
+# Specialty Cycles (Download & Go) — WFW9620HBK3 only
+# ---------------------------------------------------------------------------
+# Cloud-delivered overlay presets. Sent atomically via four wire attributes;
+# CycleName is the authoritative discriminator (CycleSelect is non-unique:
+# coats_jackets and lingerie both use CycleSelect=70).
+# Evidence: LEVEL B (phase5c_ddm_results.json, SAID=WPR4FTPCM383E).
+#   temperature: Cold=0, Cool=1, Warm=2, Hot=3, ExtraHot=4
+#   spin_speed:  Off=0, Low=2, Medium=3, High=4, ExtraHigh=5 (no value 1)
+#   soil_level:  Light=0, Normal=1, Heavy=2
+
+
+@dataclass(frozen=True)
+class SpecialtyCycle:
+    """Immutable descriptor for one specialty (Download & Go) preset."""
+
+    cycle_name: str   # Wire value for Cavity_CycleSetCycleName
+    base_cycle: int   # Wire value for WashCavity_CycleSetCycleSelect
+    temperature: int  # Wire value for WashCavity_CycleSetTemperature
+    spin_speed: int   # Wire value for WashCavity_CycleSetSpinSpeed
+    soil_level: int   # Wire value for WashCavity_CycleSetSoilLevel
+
+
+SPECIALTY_CYCLES: dict[str, SpecialtyCycle] = {
+    "coats_jackets":         SpecialtyCycle("Jackets",        70, 0, 4, 2),
+    "diapers":               SpecialtyCycle("Diapers",        92, 4, 5, 2),
+    "sleeping_bags":         SpecialtyCycle("SleepingBags",   22, 2, 3, 2),
+    "comforters":            SpecialtyCycle("Comforters",      90, 2, 3, 0),
+    "machine_wash_curtains": SpecialtyCycle("Curtains",        44, 0, 3, 0),
+    "swimwear":              SpecialtyCycle("Swimwear",        65, 0, 3, 0),
+    "activewear":            SpecialtyCycle("Activewear",       1, 2, 5, 2),
+    "jeans":                 SpecialtyCycle("Jeans",           11, 2, 5, 1),
+    "blankets":              SpecialtyCycle("Blankets",        50, 3, 5, 1),
+    "lingerie":              SpecialtyCycle("Lingerie",        70, 1, 2, 0),
+    "business_casual":       SpecialtyCycle("BusinessCasual",  16, 1, 4, 1),
+}
+
+# Reverse map: wire CycleName → option key. Used by get_specialty_cycle() to
+# identify the active preset. CycleName is the discriminator, not CycleSelect.
+SPECIALTY_CYCLE_BY_WIRE_NAME: dict[str, str] = {
+    v.cycle_name: k for k, v in SPECIALTY_CYCLES.items()
 }
 
 # ---------------------------------------------------------------------------
@@ -452,6 +503,13 @@ CYCLE_CAPABILITIES: dict[int, CycleCapability] = {
 # until their own DDM has been captured.
 CYCLE_OPTIONS_SUPPORTED_MODEL = "WFW9620HBK3"
 
+# Returned by get_cycle_capability() while a specialty cycle is active.
+# All default_* fields are None → cycle_supports_*() returns False for every
+# option except delay_time (which is True because the DDM lists it for all
+# specialty presets). This sentinel prevents the per-cycle option entities
+# from presenting editable values that the appliance would reject.
+_SPECIALTY_CAPABILITY = CycleCapability(delay_time=True)
+
 DISPENSER_ENABLE_VALUES = {
     "disabled": 0,
     "enabled": 1,
@@ -585,6 +643,8 @@ class Washer(LaundryCommandsMixin, Appliance):
         return self._get_int_attribute(ATTR_CYCLE_STATUS_TIME_REMAINING)
 
     def get_wash_cycle_pair(self) -> tuple[str, str] | None:
+        if self.is_specialty_cycle_active():
+            return None
         raw = self._get_int_attribute(ATTR_CYCLE_SELECT)
         return None if raw is None else WASH_CYCLE_REVERSE.get(raw)
 
@@ -609,6 +669,8 @@ class Washer(LaundryCommandsMixin, Appliance):
         as "unknown", not as "nothing is allowed": an unknown cycle must not
         invent restrictions that there is no evidence for.
         """
+        if self.is_specialty_cycle_active():
+            return _SPECIALTY_CAPABILITY
         if not self.is_cycle_options_model_supported():
             return None
         raw = self.get_cycle_select()
@@ -648,6 +710,11 @@ class Washer(LaundryCommandsMixin, Appliance):
         and set_utility_cycle(), which apply the necessary model/fetch guards.
         """
         payload: dict[str, str] = {ATTR_CYCLE_SELECT: str(wire)}
+        # R2: DDM NonEditable requirement — all normal and utility cycle payloads
+        # must explicitly clear the specialty-cycle flags (confirmed by the DDM's
+        # per-normal-cycle NonEditable block: Cavity_CycleSetDownloadAndGo=0).
+        payload[ATTR_DOWNLOAD_AND_GO]    = "0"
+        payload[ATTR_SPECIALTY_CYCLE_ID] = "0"
         cap = CYCLE_CAPABILITIES.get(wire)
         if cap is None:
             return payload
@@ -696,6 +763,88 @@ class Washer(LaundryCommandsMixin, Appliance):
         return await self.send_attributes(
             self._cycle_initialization_payload(value)
         )
+
+    # ------------------------------------------------------------------
+    # Specialty Cycles (Download & Go)
+    # ------------------------------------------------------------------
+
+    def supports_specialty_cycles(self) -> bool:
+        """Return True when this model supports specialty (Download & Go) cycles."""
+        return self.appliance_info.model_number == SPECIALTY_CYCLE_SUPPORTED_MODEL
+
+    def is_specialty_cycle_active(self) -> bool:
+        """Return True when a specialty cycle is selected (DownloadAndGo == "1").
+
+        DownloadAndGo is the authoritative active-state test. The idle wire
+        value of CycleName is string "None" (not empty string), which is why
+        CycleName alone cannot be used as the gate.
+        Evidence: LEVEL A (washer_WFW9620HBK3_setting_20260911_230004-off.json).
+        """
+        return self._get_attribute(ATTR_DOWNLOAD_AND_GO) == "1"
+
+    def get_specialty_cycle(self) -> str | None:
+        """Return the active specialty cycle option key, or None.
+
+        Returns None when DownloadAndGo != "1", or when the reported CycleName
+        is not in the known table (cloud drift / unknown future preset).
+        Uses CycleName as the authoritative discriminator, NOT CycleSelect,
+        because coats_jackets and lingerie share CycleSelect=70.
+        Evidence: LEVEL B (phase5c_ddm_results.json, SAID=WPR4FTPCM383E).
+        """
+        if not self.is_specialty_cycle_active():
+            return None
+        wire_name = self._get_attribute(ATTR_CYCLE_NAME)
+        if wire_name is None:
+            return None
+        return SPECIALTY_CYCLE_BY_WIRE_NAME.get(wire_name)  # None on unknown preset
+
+    async def set_specialty_cycle(self, option: str) -> bool:
+        """Select a specialty (Download & Go) cycle.
+
+        Sends one atomic send_attributes() call with exactly seven NonEditable
+        wire values: CycleSelect, SpecialtyCycleId, DownloadAndGo, CycleName,
+        Temperature, SpinSpeed, SoilLevel. All seven are DDM NonEditable for
+        every specialty preset (phase5c_ddm_results.json §SetDownloadAndGo).
+
+        Returns False when the model is unsupported, data not fetched, or cycle
+        not changeable. Raises ValueError for an unknown option key.
+
+        Evidence: LEVEL B (phase5c_ddm_results.json, SAID=WPR4FTPCM383E).
+        """
+        sc = SPECIALTY_CYCLES.get(option)
+        if sc is None:
+            raise ValueError(f"Unknown specialty cycle: {option!r}")
+        if not self.supports_specialty_cycles():
+            return False
+        if not self.has_attribute(ATTR_CYCLE_SELECT):
+            return False
+        if self.cycle_select_changeable() is not True:
+            return False
+        return await self.send_attributes({
+            ATTR_CYCLE_SELECT:       str(sc.base_cycle),
+            ATTR_SPECIALTY_CYCLE_ID: "1",
+            ATTR_DOWNLOAD_AND_GO:    "1",
+            ATTR_CYCLE_NAME:         sc.cycle_name,
+            ATTR_TEMPERATURE:        str(sc.temperature),
+            ATTR_SPIN_SPEED:         str(sc.spin_speed),
+            ATTR_SOIL_LEVEL:         str(sc.soil_level),
+        })
+
+    async def clear_specialty_cycle(self) -> bool:
+        """Exit specialty mode without selecting a normal cycle.
+
+        Sends DownloadAndGo="0" and SpecialtyCycleId="0" only. Does NOT send
+        CycleName="None" (wire idle value); the appliance manages CycleName
+        itself on the next cycle selection.
+        """
+        if not self.supports_specialty_cycles():
+            return False
+        if not self.has_attribute(ATTR_DOWNLOAD_AND_GO):
+            return False
+        return await self.send_attributes({
+            ATTR_DOWNLOAD_AND_GO:    "0",
+            ATTR_SPECIALTY_CYCLE_ID: "0",
+        })
 
     # ------------------------------------------------------------------
     # Appliance-reported changeability flags

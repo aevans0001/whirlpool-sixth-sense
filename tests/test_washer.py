@@ -1029,6 +1029,8 @@ async def test_set_utility_cycle_drain_spin_sends_exact_wire_value(
             backend_selector,
             {
                 "WashCavity_CycleSetCycleSelect": "8",
+                "Cavity_CycleSetDownloadAndGo": "0",
+                "Cavity_CycleSetSpecialtyCycleId": "0",
                 "WashCavity_CycleSetSpinSpeed": "5",
                 "WashCavity_CycleSetExtraRinseSelect": "0",
                 "WashCavity_CycleSetFresheningSelect": "0",
@@ -1060,7 +1062,11 @@ async def test_set_utility_cycle_clean_washer_sends_only_cycle_select(
             washer,
             auth,
             backend_selector,
-            {"WashCavity_CycleSetCycleSelect": "20"},
+            {
+                "WashCavity_CycleSetCycleSelect": "20",
+                "Cavity_CycleSetDownloadAndGo": "0",
+                "Cavity_CycleSetSpecialtyCycleId": "0",
+            },
         )
     )
 
@@ -1683,3 +1689,471 @@ async def test_cycle_capability_regular_normal_includes_presoak_and_steam():
     assert cap.steam is True
     assert cap.default_presoak == 0
     assert cap.default_steam == 0
+
+
+# ---------------------------------------------------------------------------
+# Specialty Cycles (Download & Go) — WFW9620HBK3
+# ---------------------------------------------------------------------------
+# Evidence basis for all preset values: LEVEL B (phase5c_ddm_results.json,
+# SAID=WPR4FTPCM383E, §SetDownloadAndGo capability, lines 6668-6764).
+# Wire string traps covered by explicit tests:
+#   coats_jackets  → CycleName="Jackets"  (NOT "CoatsJackets")
+#   machine_wash_curtains → CycleName="Curtains" (NOT "MachineWashCurtains")
+
+from whirlpool.washer import SPECIALTY_CYCLES  # noqa: E402 (after test helpers)
+
+
+@pytest.mark.parametrize(
+    ["option", "expected_body"],
+    [
+        (
+            "coats_jackets",
+            {
+                "WashCavity_CycleSetCycleSelect": "70",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "Jackets",
+                "WashCavity_CycleSetTemperature": "0",
+                "WashCavity_CycleSetSpinSpeed": "4",
+                "WashCavity_CycleSetSoilLevel": "2",
+            },
+        ),
+        (
+            "diapers",
+            {
+                "WashCavity_CycleSetCycleSelect": "92",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "Diapers",
+                "WashCavity_CycleSetTemperature": "4",
+                "WashCavity_CycleSetSpinSpeed": "5",
+                "WashCavity_CycleSetSoilLevel": "2",
+            },
+        ),
+        (
+            "sleeping_bags",
+            {
+                "WashCavity_CycleSetCycleSelect": "22",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "SleepingBags",
+                "WashCavity_CycleSetTemperature": "2",
+                "WashCavity_CycleSetSpinSpeed": "3",
+                "WashCavity_CycleSetSoilLevel": "2",
+            },
+        ),
+        (
+            "comforters",
+            {
+                "WashCavity_CycleSetCycleSelect": "90",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "Comforters",
+                "WashCavity_CycleSetTemperature": "2",
+                "WashCavity_CycleSetSpinSpeed": "3",
+                "WashCavity_CycleSetSoilLevel": "0",
+            },
+        ),
+        (
+            "machine_wash_curtains",
+            {
+                "WashCavity_CycleSetCycleSelect": "44",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "Curtains",
+                "WashCavity_CycleSetTemperature": "0",
+                "WashCavity_CycleSetSpinSpeed": "3",
+                "WashCavity_CycleSetSoilLevel": "0",
+            },
+        ),
+        (
+            "swimwear",
+            {
+                "WashCavity_CycleSetCycleSelect": "65",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "Swimwear",
+                "WashCavity_CycleSetTemperature": "0",
+                "WashCavity_CycleSetSpinSpeed": "3",
+                "WashCavity_CycleSetSoilLevel": "0",
+            },
+        ),
+        (
+            "activewear",
+            {
+                "WashCavity_CycleSetCycleSelect": "1",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "Activewear",
+                "WashCavity_CycleSetTemperature": "2",
+                "WashCavity_CycleSetSpinSpeed": "5",
+                "WashCavity_CycleSetSoilLevel": "2",
+            },
+        ),
+        (
+            "jeans",
+            {
+                "WashCavity_CycleSetCycleSelect": "11",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "Jeans",
+                "WashCavity_CycleSetTemperature": "2",
+                "WashCavity_CycleSetSpinSpeed": "5",
+                "WashCavity_CycleSetSoilLevel": "1",
+            },
+        ),
+        (
+            "blankets",
+            {
+                "WashCavity_CycleSetCycleSelect": "50",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "Blankets",
+                "WashCavity_CycleSetTemperature": "3",
+                "WashCavity_CycleSetSpinSpeed": "5",
+                "WashCavity_CycleSetSoilLevel": "1",
+            },
+        ),
+        (
+            "lingerie",
+            {
+                "WashCavity_CycleSetCycleSelect": "70",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "Lingerie",
+                "WashCavity_CycleSetTemperature": "1",
+                "WashCavity_CycleSetSpinSpeed": "2",
+                "WashCavity_CycleSetSoilLevel": "0",
+            },
+        ),
+        (
+            "business_casual",
+            {
+                "WashCavity_CycleSetCycleSelect": "16",
+                "Cavity_CycleSetSpecialtyCycleId": "1",
+                "Cavity_CycleSetDownloadAndGo": "1",
+                "Cavity_CycleSetCycleName": "BusinessCasual",
+                "WashCavity_CycleSetTemperature": "1",
+                "WashCavity_CycleSetSpinSpeed": "4",
+                "WashCavity_CycleSetSoilLevel": "1",
+            },
+        ),
+    ],
+)
+async def test_set_specialty_cycle_sends_exact_7_key_payload(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+    option: str,
+    expected_body: dict,
+):
+    """Every specialty cycle sends exactly seven NonEditable wire attributes atomically.
+
+    All seven keys and their values are DDM-proven per phase5c_ddm_results.json
+    §SetDownloadAndGo CapabilityData (SAID=WPR4FTPCM383E). The payload must
+    contain no other attributes.
+    Evidence: LEVEL B.
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    aiointercept_mock.post(backend_selector.appliance_command_url, payload={})
+    assert await washer.set_specialty_cycle(option) is True
+    aiointercept_mock.assert_called_with(
+        **_expected_call(washer, auth, backend_selector, expected_body)
+    )
+
+
+async def test_coats_jackets_sends_wire_name_jackets(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """coats_jackets must send CycleName="Jackets", NOT "CoatsJackets".
+
+    Wire-string trap: the DDM SetDownloadAndGo entry uses "Jackets" as the
+    CycleName literal. Sending "CoatsJackets" would create an unknown preset
+    on the appliance side.
+    Evidence: LEVEL B (phase5c_ddm_results.json lines 7600-7626).
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    aiointercept_mock.post(backend_selector.appliance_command_url, payload={})
+    await washer.set_specialty_cycle("coats_jackets")
+    sent = aiointercept_mock.requests[
+        ("POST", __import__("yarl").URL(backend_selector.appliance_command_url))
+    ][-1].kwargs["json"]["body"]
+    assert sent["Cavity_CycleSetCycleName"] == "Jackets"
+    assert sent["Cavity_CycleSetCycleName"] != "CoatsJackets"
+
+
+async def test_machine_wash_curtains_sends_wire_name_curtains(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """machine_wash_curtains must send CycleName="Curtains", NOT "MachineWashCurtains".
+
+    Wire-string trap: the DDM uses "Curtains" as the literal. Sending
+    "MachineWashCurtains" would not match any known preset.
+    Evidence: LEVEL B (phase5c_ddm_results.json lines 7932-7952).
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    aiointercept_mock.post(backend_selector.appliance_command_url, payload={})
+    await washer.set_specialty_cycle("machine_wash_curtains")
+    sent = aiointercept_mock.requests[
+        ("POST", __import__("yarl").URL(backend_selector.appliance_command_url))
+    ][-1].kwargs["json"]["body"]
+    assert sent["Cavity_CycleSetCycleName"] == "Curtains"
+    assert sent["Cavity_CycleSetCycleName"] != "MachineWashCurtains"
+
+
+def test_coats_jackets_and_lingerie_share_base_cycle_70_but_different_names():
+    """coats_jackets and lingerie both use CycleSelect=70 but different CycleName.
+
+    This proves that CycleName is the only reliable discriminator for the
+    reverse lookup (get_specialty_cycle). A reverse lookup keyed on CycleSelect
+    would be ambiguous and would misidentify one of them.
+    Evidence: LEVEL B (phase5c_ddm_results.json, SAID=WPR4FTPCM383E).
+    """
+    cj = SPECIALTY_CYCLES["coats_jackets"]
+    li = SPECIALTY_CYCLES["lingerie"]
+    assert cj.base_cycle == li.base_cycle == 70
+    assert cj.cycle_name != li.cycle_name
+    assert cj.cycle_name == "Jackets"
+    assert li.cycle_name == "Lingerie"
+
+
+@pytest.mark.parametrize(
+    ["overrides", "expected"],
+    [
+        (
+            {"Cavity_CycleSetDownloadAndGo": "1", "Cavity_CycleSetCycleName": "Activewear"},
+            "activewear",
+        ),
+        (
+            {"Cavity_CycleSetDownloadAndGo": "0", "Cavity_CycleSetCycleName": "Activewear"},
+            None,
+        ),
+        (
+            {"Cavity_CycleSetDownloadAndGo": "1", "Cavity_CycleSetCycleName": "None"},
+            None,
+        ),
+    ],
+)
+async def test_get_specialty_cycle_returns_correct_key(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+    overrides: dict,
+    expected,
+):
+    """get_specialty_cycle decodes wire state to option key or None.
+
+    DownloadAndGo="0" → None regardless of CycleName.
+    DownloadAndGo="1" + unknown CycleName → None (no exception).
+    CycleName="None" (the idle wire value) → None.
+    Evidence: LEVEL A (washer_WFW9620HBK3_setting_20260911_230004-off.json).
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock, **overrides
+    )
+    assert washer.get_specialty_cycle() == expected
+
+
+@pytest.mark.parametrize(
+    ["dag_value", "expected"],
+    [("1", True), ("0", False)],
+)
+async def test_is_specialty_cycle_active(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+    dag_value: str,
+    expected: bool,
+):
+    """is_specialty_cycle_active() reads DownloadAndGo wire attribute directly."""
+    washer = await _make_wfw_washer(
+        auth,
+        backend_selector,
+        client_session_fixture,
+        aiointercept_mock,
+        Cavity_CycleSetDownloadAndGo=dag_value,
+    )
+    assert washer.is_specialty_cycle_active() is expected
+
+
+async def test_specialty_cycle_blocks_all_option_supports(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """While a specialty cycle is active, all per-cycle option selects are unavailable.
+
+    get_cycle_capability() returns _SPECIALTY_CAPABILITY while DownloadAndGo=="1",
+    which has empty frozensets for temperature/spin/soil and False for all bool
+    flags except delay_time. This prevents the option entities from presenting
+    values that the appliance would reject (all options are NonEditable for
+    specialty presets per the DDM).
+    Evidence: LEVEL B (phase5c_ddm_results.json §SetDownloadAndGo).
+    """
+    washer = await _make_wfw_washer(
+        auth,
+        backend_selector,
+        client_session_fixture,
+        aiointercept_mock,
+        Cavity_CycleSetDownloadAndGo="1",
+        Cavity_CycleSetCycleName="Activewear",
+    )
+    assert washer.is_specialty_cycle_active() is True
+    assert washer.cycle_supports_temperature() is False
+    assert washer.cycle_supports_spin_speed() is False
+    assert washer.cycle_supports_soil_level() is False
+    assert washer.cycle_supports_presoak() is False
+    assert washer.cycle_supports_extra_rinse() is False
+    assert washer.cycle_supports_fan_fresh() is False
+    assert washer.cycle_supports_steam() is False
+    assert washer.cycle_supports_delay_time() is True
+
+
+async def test_get_wash_cycle_pair_returns_none_during_specialty(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """get_wash_cycle_pair() must return None while a specialty cycle is active.
+
+    CycleSelect=70 would decode to ("delicates", "wrinkle_control") via the
+    normal reverse table, but while DownloadAndGo=="1" it represents a specialty
+    preset (coats_jackets or lingerie). Returning a false What+How pair would
+    cause the What and How selects to display wrong values.
+    Evidence: LEVEL B.
+    """
+    washer = await _make_wfw_washer(
+        auth,
+        backend_selector,
+        client_session_fixture,
+        aiointercept_mock,
+        WashCavity_CycleSetCycleSelect=70,
+        Cavity_CycleSetDownloadAndGo="1",
+        Cavity_CycleSetCycleName="Jackets",
+    )
+    assert washer.get_wash_cycle_pair() is None
+
+
+async def test_unknown_specialty_cycle_raises_value_error(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """set_specialty_cycle raises ValueError for an unrecognised key; nothing sent."""
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    with pytest.raises(ValueError):
+        await washer.set_specialty_cycle("self_clean")
+    _assert_nothing_sent(aiointercept_mock, backend_selector)
+
+
+async def test_specialty_cycle_blocked_on_other_model(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """set_specialty_cycle returns False for models other than WFW9620HBK3."""
+    washer = await _make_wfw_washer(
+        auth,
+        backend_selector,
+        client_session_fixture,
+        aiointercept_mock,
+        model_number="WTW8127LW1",
+    )
+    assert washer.supports_specialty_cycles() is False
+    assert await washer.set_specialty_cycle("activewear") is False
+    _assert_nothing_sent(aiointercept_mock, backend_selector)
+
+
+async def test_unknown_wire_name_decodes_to_none_not_raises(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """A CycleName not in the lookup table yields None, not an exception.
+
+    This handles cloud drift (a new preset that the server delivers but this
+    version of the library does not yet know about).
+    """
+    washer = await _make_wfw_washer(
+        auth,
+        backend_selector,
+        client_session_fixture,
+        aiointercept_mock,
+        Cavity_CycleSetDownloadAndGo="1",
+        Cavity_CycleSetCycleName="UnknownFuturePreset",
+    )
+    result = washer.get_specialty_cycle()
+    assert result is None  # No exception raised
+
+
+async def test_normal_cycle_init_payload_includes_download_and_go_clear(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """[R2] Normal cycle (Colors+Normal) payload must include DownloadAndGo="0" and
+    SpecialtyCycleId="0".
+
+    The DDM NonEditable block for every normal cycle requires these two fields
+    to be written to zero, ensuring the appliance exits specialty mode when a
+    normal cycle is selected via set_wash_cycle_pair().
+    Evidence: LEVEL B (phase5c_ddm_results.json §Normal cycle NonEditable).
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    aiointercept_mock.post(backend_selector.appliance_command_url, payload={})
+    assert await washer.set_wash_cycle_pair("colors", "normal") is True
+    sent = aiointercept_mock.requests[
+        ("POST", __import__("yarl").URL(backend_selector.appliance_command_url))
+    ][-1].kwargs["json"]["body"]
+    assert sent.get("Cavity_CycleSetDownloadAndGo") == "0"
+    assert sent.get("Cavity_CycleSetSpecialtyCycleId") == "0"
+
+
+async def test_utility_cycle_init_payload_includes_download_and_go_clear(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """[R2] Utility cycle (drain_spin) payload must include DownloadAndGo="0" and
+    SpecialtyCycleId="0".
+
+    Same DDM requirement as normal cycles: every non-specialty CycleSelect write
+    must explicitly clear the specialty-cycle flags.
+    Evidence: LEVEL B (phase5c_ddm_results.json §Normal cycle NonEditable).
+    """
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    aiointercept_mock.post(backend_selector.appliance_command_url, payload={})
+    assert await washer.set_utility_cycle("drain_spin") is True
+    sent = aiointercept_mock.requests[
+        ("POST", __import__("yarl").URL(backend_selector.appliance_command_url))
+    ][-1].kwargs["json"]["body"]
+    assert sent.get("Cavity_CycleSetDownloadAndGo") == "0"
+    assert sent.get("Cavity_CycleSetSpecialtyCycleId") == "0"
