@@ -10,6 +10,8 @@ from whirlpool.backendselector import BackendSelector
 from whirlpool.dryer import (
     DRY_CYCLE_PAIR_MAP,
     DRY_CYCLE_PAIR_REVERSE,
+    QUICK_GROUP_CYCLES,
+    TIMED_DRY_GROUP_CYCLES,
     Cycle,
     Dryer,
     Dryness,
@@ -645,7 +647,7 @@ async def test_set_static_guard(
 
     expected_payload = {
         "json": {
-            "body": {"DryCavity_CycleSetStaticGuard": expected_wire},
+            "body": {"DryCavity_CycleSetStaticGuardEnable": expected_wire},
             "header": {"said": dryer.said, "command": "setAttributes"},
         }
     }
@@ -743,7 +745,7 @@ async def test_set_eco_boost(
 
     expected_payload = {
         "json": {
-            "body": {"DryCavity_CycleSetEcoBoost": expected_wire},
+            "body": {"DryCavity_CycleSetEcoBoostEnable": expected_wire},
             "header": {"said": dryer.said, "command": "setAttributes"},
         }
     }
@@ -872,3 +874,505 @@ async def test_set_manual_dry_time_blocked_when_not_changeable(
         "POST",
         URL(backend_selector.appliance_command_url),
     ) not in aiointercept_mock.requests
+
+
+# ---------------------------------------------------------------------------
+# get_static_guard / get_eco_boost — getter attribute-name correctness
+# ---------------------------------------------------------------------------
+
+
+async def test_get_static_guard_reads_correct_attr(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+):
+    """get_static_guard() must read DryCavity_CycleSetStaticGuardEnable (with Enable).
+
+    Regression guard: ATTR_STATIC_GUARD was previously missing the 'Enable'
+    suffix; the getter returned None (HA shows 'unknown') even when the live
+    appliance reported the attribute.
+    """
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said="SAIDDRYER_SGGET",
+        name="Static guard getter dryer",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url("SAIDDRYER_SGGET"),
+        payload={
+            "attributes": {
+                # Wire "0" = off; must be decoded correctly via get_static_guard_str()
+                "DryCavity_CycleSetStaticGuardEnable": {
+                    "value": "0",
+                    "updateTime": 1000,
+                },
+                "DryCavity_ChangeStatusStaticGuard": {"value": "1", "updateTime": 1000},
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    assert dryer.get_static_guard_str() == "off"
+    assert dryer.get_static_guard_changeable() is True
+
+
+async def test_get_eco_boost_reads_correct_attr(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+):
+    """get_eco_boost() must read DryCavity_CycleSetEcoBoostEnable (with Enable).
+
+    Regression guard: ATTR_ECO_BOOST was previously missing the 'Enable'
+    suffix; the getter returned None (HA shows 'unknown') even when the live
+    appliance reported the attribute.
+    """
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said="SAIDDRYER_EBGET",
+        name="Eco boost getter dryer",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url("SAIDDRYER_EBGET"),
+        payload={
+            "attributes": {
+                # Wire "1" = on; must be decoded correctly via get_eco_boost_str()
+                "DryCavity_CycleSetEcoBoostEnable": {"value": "1", "updateTime": 1000},
+                "DryCavity_ChangeStatusEcoBoost": {"value": "1", "updateTime": 1000},
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    assert dryer.get_eco_boost_str() == "on"
+    assert dryer.get_eco_boost_changeable() is True
+
+
+# ---------------------------------------------------------------------------
+# get_manual_dry_time_options_minutes — per-cycle helper
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("cycle_wire", sorted(QUICK_GROUP_CYCLES))
+async def test_get_mdt_options_quick_group(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+    cycle_wire: str,
+):
+    """get_manual_dry_time_options_minutes() returns Quick options for all 6 Quick
+    cycles."""
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said=f"SAIDDRYER_QDTQ_{cycle_wire}",
+        name=f"Quick dryer cycle {cycle_wire}",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url(f"SAIDDRYER_QDTQ_{cycle_wire}"),
+        payload={
+            "attributes": {
+                "DryCavity_CycleSetCycleSelect": {
+                    "value": cycle_wire,
+                    "updateTime": 1000,
+                },
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    assert dryer.get_manual_dry_time_options_minutes() == ["15", "30", "45"]
+
+
+@pytest.mark.parametrize("cycle_wire", sorted(TIMED_DRY_GROUP_CYCLES))
+async def test_get_mdt_options_timed_dry_group(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+    cycle_wire: str,
+):
+    """get_manual_dry_time_options_minutes() returns Timed Dry options for all 6
+    Timed cycles."""
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said=f"SAIDDRYER_QDTT_{cycle_wire}",
+        name=f"Timed dryer cycle {cycle_wire}",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url(f"SAIDDRYER_QDTT_{cycle_wire}"),
+        payload={
+            "attributes": {
+                "DryCavity_CycleSetCycleSelect": {
+                    "value": cycle_wire,
+                    "updateTime": 1000,
+                },
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    assert dryer.get_manual_dry_time_options_minutes() == ["30", "60", "90"]
+
+
+async def test_get_mdt_options_non_mdt_cycle_returns_none(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+):
+    """get_manual_dry_time_options_minutes() returns None for a known non-MDT cycle."""
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said="SAIDDRYER_NONMDT",
+        name="Non-MDT dryer",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url("SAIDDRYER_NONMDT"),
+        payload={
+            "attributes": {
+                # Wire "2" = HeavyDuty — a known non-MDT cycle
+                "DryCavity_CycleSetCycleSelect": {"value": "2", "updateTime": 1000},
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    assert dryer.get_manual_dry_time_options_minutes() is None
+
+
+# ---------------------------------------------------------------------------
+# set_manual_dry_time — AMENDMENT: fail-closed tests (MUST NOT SEND)
+# ---------------------------------------------------------------------------
+
+
+async def test_set_manual_dry_time_known_non_mdt_cycle_returns_false(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+):
+    """AMENDMENT: set_manual_dry_time() returns False and sends nothing for a
+    known non-MDT cycle (HeavyDuty, wire '2') even when ChangeStatus='1'.
+
+    Live evidence: ChangeStatusManualDryTime="1" observed while
+    CycleSetCycleSelect="31" (TowelsHeavyDuty, a non-MDT cycle).
+    The changeable gate alone is insufficient; cycle-group must be checked.
+    """
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said="SAIDDRYER_MDT_NONMDT",
+        name="Non-MDT cycle dryer",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url("SAIDDRYER_MDT_NONMDT"),
+        payload={
+            "attributes": {
+                # HeavyDuty: wire "2" — known non-MDT cycle
+                "DryCavity_CycleSetCycleSelect": {"value": "2", "updateTime": 1000},
+                # ChangeStatus is intentionally "1" to prove the gate is insufficient
+                "DryCavity_ChangeStatusManualDryTime": {
+                    "value": "1",
+                    "updateTime": 1000,
+                },
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    assert await dryer.set_manual_dry_time(1800) is False
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
+
+
+async def test_set_manual_dry_time_missing_cycle_returns_false(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+):
+    """AMENDMENT: set_manual_dry_time() returns False and sends nothing when
+    CycleSelect attribute is absent entirely."""
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said="SAIDDRYER_MDT_NOCYCLE",
+        name="No-cycle dryer",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url("SAIDDRYER_MDT_NOCYCLE"),
+        payload={
+            "attributes": {
+                # CycleSelect deliberately absent
+                "DryCavity_ChangeStatusManualDryTime": {
+                    "value": "1",
+                    "updateTime": 1000,
+                },
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    assert await dryer.set_manual_dry_time(1800) is False
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
+
+
+async def test_set_manual_dry_time_unknown_cycle_returns_false(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+):
+    """AMENDMENT: set_manual_dry_time() returns False and sends nothing when
+    CycleSelect is an unrecognised wire value ('999')."""
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said="SAIDDRYER_MDT_UNKCY",
+        name="Unknown-cycle dryer",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url("SAIDDRYER_MDT_UNKCY"),
+        payload={
+            "attributes": {
+                "DryCavity_CycleSetCycleSelect": {"value": "999", "updateTime": 1000},
+                "DryCavity_ChangeStatusManualDryTime": {
+                    "value": "1",
+                    "updateTime": 1000,
+                },
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    assert await dryer.set_manual_dry_time(1800) is False
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
+
+
+@pytest.mark.parametrize(
+    "invalid_seconds",
+    [
+        3600,   # Timed-Dry-only — not in Quick set
+        5400,   # Timed-Dry-only — not in Quick set
+        60,     # Not in any MDT set
+        0,      # Not in any MDT set
+    ],
+)
+async def test_set_manual_dry_time_quick_cycle_invalid_seconds(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+    invalid_seconds: int,
+):
+    """AMENDMENT: set_manual_dry_time() returns False and sends nothing when
+    the current cycle is Quick-group but the seconds value is not in {900,1800,2700}."""
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said=f"SAIDDRYER_MDT_QBAD_{invalid_seconds}",
+        name=f"Quick dryer bad-seconds {invalid_seconds}",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url(f"SAIDDRYER_MDT_QBAD_{invalid_seconds}"),
+        payload={
+            "attributes": {
+                # QuickDry — wire "7" — valid Quick cycle
+                "DryCavity_CycleSetCycleSelect": {"value": "7", "updateTime": 1000},
+                "DryCavity_ChangeStatusManualDryTime": {
+                    "value": "1",
+                    "updateTime": 1000,
+                },
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    assert await dryer.set_manual_dry_time(invalid_seconds) is False
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
+
+
+@pytest.mark.parametrize(
+    "invalid_seconds",
+    [
+        900,    # Quick-only — not in Timed Dry set
+        2700,   # Quick-only — not in Timed Dry set
+        60,     # Not in any MDT set
+        0,      # Not in any MDT set
+    ],
+)
+async def test_set_manual_dry_time_timed_cycle_invalid_seconds(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+    invalid_seconds: int,
+):
+    """AMENDMENT: set_manual_dry_time() returns False and sends nothing when
+    the current cycle is Timed-Dry-group but the seconds value is not in
+    {1800,3600,5400}."""
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said=f"SAIDDRYER_MDT_TBAD_{invalid_seconds}",
+        name=f"Timed dryer bad-seconds {invalid_seconds}",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url(f"SAIDDRYER_MDT_TBAD_{invalid_seconds}"),
+        payload={
+            "attributes": {
+                # TimedDry — wire "11" — valid Timed Dry cycle
+                "DryCavity_CycleSetCycleSelect": {"value": "11", "updateTime": 1000},
+                "DryCavity_ChangeStatusManualDryTime": {
+                    "value": "1",
+                    "updateTime": 1000,
+                },
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    assert await dryer.set_manual_dry_time(invalid_seconds) is False
+    assert (
+        "POST",
+        URL(backend_selector.appliance_command_url),
+    ) not in aiointercept_mock.requests
+
+
+# ---------------------------------------------------------------------------
+# set_manual_dry_time — valid Quick-group sends (complement to existing Timed test)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ["seconds", "expected_wire"],
+    [
+        (900, "900"),
+        (1800, "1800"),
+        (2700, "2700"),
+    ],
+)
+async def test_set_manual_dry_time_quick_valid(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    client_session_fixture,
+    aiointercept_mock: aiointercept,
+    seconds: int,
+    expected_wire: str,
+):
+    """set_manual_dry_time() sends the correct wire value for Quick-group cycles.
+
+    Covers all three allowed seconds values: 900 (15 min), 1800 (30 min),
+    2700 (45 min).
+    """
+    from whirlpool.types import ApplianceInfo
+
+    info = ApplianceInfo(
+        said=f"SAIDDRYER_MDT_QV_{seconds}",
+        name=f"Quick MDT dryer {seconds}s",
+        data_model="API144",
+        category="Laundry",
+        model_number="WED9620HBK2",
+        serial_number="TEST",
+    )
+    dryer = Dryer(backend_selector, auth, client_session_fixture, info)
+    aiointercept_mock.get(
+        backend_selector.get_appliance_data_url(f"SAIDDRYER_MDT_QV_{seconds}"),
+        payload={
+            "attributes": {
+                "DryCavity_CycleSetCycleSelect": {"value": "7", "updateTime": 1000},
+                "DryCavity_ChangeStatusManualDryTime": {
+                    "value": "1",
+                    "updateTime": 1000,
+                },
+            }
+        },
+    )
+    await dryer.fetch_data()
+
+    expected_payload = {
+        "json": {
+            "body": {"DryCavity_CycleSetManualDryTime": expected_wire},
+            "header": {"said": dryer.said, "command": "setAttributes"},
+        }
+    }
+    url = backend_selector.appliance_command_url
+    aiointercept_mock.post(url, payload=expected_payload)
+
+    assert await dryer.set_manual_dry_time(seconds) is True
+    aiointercept_mock.assert_called_with(
+        url=url,
+        method="POST",
+        data=None,
+        json=expected_payload["json"],
+        headers=auth.create_headers(),
+    )

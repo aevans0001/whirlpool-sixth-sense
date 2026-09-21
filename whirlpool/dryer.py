@@ -122,8 +122,8 @@ ATTRVAL_WRINKLE_SHIELD_OFF = "0"
 ATTRVAL_WRINKLE_SHIELD_ON = "1"
 ATTRVAL_WRINKLE_SHIELD_ON_WITH_STEAM = "2"
 
-ATTR_STATIC_GUARD = "DryCavity_CycleSetStaticGuard"
-ATTR_ECO_BOOST = "DryCavity_CycleSetEcoBoost"
+ATTR_STATIC_GUARD = "DryCavity_CycleSetStaticGuardEnable"
+ATTR_ECO_BOOST = "DryCavity_CycleSetEcoBoostEnable"
 
 ATTR_CYCLE_STATUS_AIR_FLOW_STATUS = "DryCavity_CycleStatusAirFlowStatus"
 ATTR_CYCLE_STATUS_COOL_DOWN = "DryCavity_CycleStatusCoolDown"
@@ -281,6 +281,38 @@ UTILITY_CYCLE_MAP: dict[str, str] = {
     "steam_refresh": ATTRVAL_CYCLE_STEAM_REFRESH,
 }
 UTILITY_CYCLE_REVERSE: dict[str, str] = {v: k for k, v in UTILITY_CYCLE_MAP.items()}
+
+# --- Manual Dry Time (MDT) cycle groups ---
+# Only cycles in one of these two groups support MDT selection.
+# Each group has exactly 6 members (DDM-proven on WED9620HBK2).
+# Live evidence: ChangeStatusManualDryTime="1" has been observed while the
+# active cycle was TowelsHeavyDuty (wire "31"), a non-MDT cycle.  The
+# changeable gate alone is therefore insufficient; the cycle-group check is
+# mandatory and must be applied independently.
+QUICK_GROUP_CYCLES: frozenset[str] = frozenset({
+    ATTRVAL_CYCLE_QUICK_DRY,              # "7"
+    ATTRVAL_CYCLE_COLORS_QUICK,           # "18"
+    ATTRVAL_CYCLE_BULKY_QUICK,            # "23"
+    ATTRVAL_CYCLE_DELICATES_QUICK,        # "28"
+    ATTRVAL_CYCLE_TOWELS_QUICK,           # "32"
+    ATTRVAL_CYCLE_WHITES_QUICK,           # "37"
+})
+
+TIMED_DRY_GROUP_CYCLES: frozenset[str] = frozenset({
+    ATTRVAL_CYCLE_TIMED_DRY,             # "11"
+    ATTRVAL_CYCLE_COLORS_TIMED_DRY,      # "20"
+    ATTRVAL_CYCLE_BULKY_TIMED_DRY,       # "25"
+    ATTRVAL_CYCLE_DELICATES_TIMED_DRY,   # "29"
+    ATTRVAL_CYCLE_TOWELS_TIMED_DRY,      # "34"
+    ATTRVAL_CYCLE_WHITES_TIMED_DRY,      # "39"
+})
+
+# Allowed wire values (seconds) per group.
+# Quick: 15 min, 30 min, 45 min.
+# Timed Dry: 30 min, 60 min, 90 min.
+# (DDM-proven on WED9620HBK2; see Phase 5B-5D analysis artifacts.)
+QUICK_MDT_ALLOWED_SECONDS: frozenset[str] = frozenset({"900", "1800", "2700"})
+TIMED_DRY_MDT_ALLOWED_SECONDS: frozenset[str] = frozenset({"1800", "3600", "5400"})
 
 
 class Dryness(Enum):
@@ -500,6 +532,27 @@ class Dryer(LaundryCommandsMixin, Appliance):
     def get_manual_dry_time(self) -> int | None:
         return self._get_int_attribute(ATTR_MANUAL_DRY_TIME)
 
+    def get_manual_dry_time_options_minutes(self) -> list[str] | None:
+        """Return the allowed MDT option keys (in minutes) for the current cycle.
+
+        Returns:
+            ``["15", "30", "45"]``  for a Quick-group cycle,
+            ``["30", "60", "90"]``  for a Timed-Dry-group cycle,
+            ``None``                for any other cycle (missing, unknown,
+                                    or a known non-MDT cycle).
+
+        Callers must treat ``None`` as "MDT not applicable" and must NOT
+        expose MDT options or send MDT commands when this returns ``None``.
+        The ChangeStatus gate alone is insufficient — live evidence shows
+        ChangeStatusManualDryTime="1" while a non-MDT cycle is active.
+        """
+        cycle_raw = self._get_attribute(ATTR_CYCLE)
+        if cycle_raw in QUICK_GROUP_CYCLES:
+            return ["15", "30", "45"]
+        if cycle_raw in TIMED_DRY_GROUP_CYCLES:
+            return ["30", "60", "90"]
+        return None
+
     def get_cycle(self) -> Cycle | None:
         cycle_raw = self._get_attribute(ATTR_CYCLE)
         if cycle_raw is None:
@@ -708,11 +761,34 @@ class Dryer(LaundryCommandsMixin, Appliance):
         return await self.send_attributes({ATTR_ECO_BOOST: value})
 
     async def set_manual_dry_time(self, seconds: int) -> bool:
-        """Set manual dry time.
+        """Set manual dry time (fail-closed).
 
         The wire value is in seconds (DDM-proven: 1800 = 30 minutes).
-        Returns False when DryCavity_ChangeStatusManualDryTime is not True.
+
+        Validation is fail-closed: every code path that does NOT resolve to
+        a confirmed Quick-group or Timed-Dry-group cycle with a valid duration
+        for that group returns False without calling send_attributes().
+        This prevents accidental sends when CycleSelect is missing, unknown,
+        or a known non-MDT cycle — even when ChangeStatusManualDryTime is "1"
+        (live evidence: gate observed "1" while cycle was TowelsHeavyDuty).
+
+        Returns False when:
+          - DryCavity_ChangeStatusManualDryTime is not True
+          - CycleSelect is missing or unrecognised
+          - current cycle is not in Quick-group or Timed-Dry-group
+          - ``seconds`` is not in the set allowed for the current group
         """
         if not self.get_manual_dry_time_changeable():
             return False
-        return await self.send_attributes({ATTR_MANUAL_DRY_TIME: str(seconds)})
+        cycle_raw = self._get_attribute(ATTR_CYCLE)
+        seconds_str = str(seconds)
+        if cycle_raw in QUICK_GROUP_CYCLES:
+            if seconds_str not in QUICK_MDT_ALLOWED_SECONDS:
+                return False
+            return await self.send_attributes({ATTR_MANUAL_DRY_TIME: seconds_str})
+        if cycle_raw in TIMED_DRY_GROUP_CYCLES:
+            if seconds_str not in TIMED_DRY_MDT_ALLOWED_SECONDS:
+                return False
+            return await self.send_attributes({ATTR_MANUAL_DRY_TIME: seconds_str})
+        # Missing / unknown / non-MDT cycle — fail closed, no send.
+        return False
