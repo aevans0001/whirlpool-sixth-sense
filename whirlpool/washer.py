@@ -65,6 +65,7 @@ STEAM_ENABLE_REVERSE = {value: key for key, value in STEAM_ENABLE_VALUES.items()
 ATTR_DOWNLOAD_AND_GO    = "Cavity_CycleSetDownloadAndGo"
 ATTR_SPECIALTY_CYCLE_ID = "Cavity_CycleSetSpecialtyCycleId"
 ATTR_CYCLE_NAME         = "Cavity_CycleSetCycleName"
+ATTR_SET_OPERATIONS     = "Cavity_OpSetOperations"
 SPECIALTY_CYCLE_SUPPORTED_MODEL = "WFW9620HBK3"
 
 # DDM-proven combined What-to-Wash / How-to-Wash values for WFW9620HBK3.
@@ -801,10 +802,11 @@ class Washer(LaundryCommandsMixin, Appliance):
     async def set_specialty_cycle(self, option: str) -> bool:
         """Select a specialty (Download & Go) cycle.
 
-        Sends one atomic send_attributes() call with exactly seven NonEditable
-        wire values: CycleSelect, SpecialtyCycleId, DownloadAndGo, CycleName,
-        Temperature, SpinSpeed, SoilLevel. All seven are DDM NonEditable for
-        every specialty preset (phase5c_ddm_results.json §SetDownloadAndGo).
+        Sends one atomic send_attributes() call with the seven DDM cycle/preset
+        values plus the Whirlpool SaveLoadAndGo operation: CycleSelect,
+        SpecialtyCycleId, DownloadAndGo, CycleName, Temperature, SpinSpeed,
+        SoilLevel, and Cavity_OpSetOperations=1003. The operation value is
+        proven by the Whirlpool 6.8.4 APK SaveLoadAndGo command path.
 
         Returns False when the model is unsupported, data not fetched, or cycle
         not changeable. Raises ValueError for an unknown option key.
@@ -828,6 +830,7 @@ class Washer(LaundryCommandsMixin, Appliance):
             ATTR_TEMPERATURE:        str(sc.temperature),
             ATTR_SPIN_SPEED:         str(sc.spin_speed),
             ATTR_SOIL_LEVEL:         str(sc.soil_level),
+            ATTR_SET_OPERATIONS:     "1003",
         })
 
     async def clear_specialty_cycle(self) -> bool:

@@ -1870,7 +1870,7 @@ from whirlpool.washer import SPECIALTY_CYCLES  # noqa: E402 (after test helpers)
         ),
     ],
 )
-async def test_set_specialty_cycle_sends_exact_7_key_payload(
+async def test_set_specialty_cycle_sends_exact_8_key_payload(
     auth: Auth,
     backend_selector: BackendSelector,
     aiointercept_mock: aiointercept,
@@ -1878,17 +1878,20 @@ async def test_set_specialty_cycle_sends_exact_7_key_payload(
     option: str,
     expected_body: dict,
 ):
-    """Every specialty cycle sends exactly seven NonEditable wire attributes atomically.
+    """Every specialty cycle sends the exact eight-key SaveLoadAndGo payload.
 
-    All seven keys and their values are DDM-proven per phase5c_ddm_results.json
-    §SetDownloadAndGo CapabilityData (SAID=WPR4FTPCM383E). The payload must
-    contain no other attributes.
-    Evidence: LEVEL B.
+    Seven cycle/preset values come from the WFW9620HBK3 DDM. The eighth key,
+    Cavity_OpSetOperations=1003, is proven by the Whirlpool 6.8.4 APK
+    SaveLoadAndGo command path. The payload must contain no other attributes.
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
     )
     aiointercept_mock.post(backend_selector.appliance_command_url, payload={})
+    expected_body = {
+        **expected_body,
+        "Cavity_OpSetOperations": "1003",
+    }
     assert await washer.set_specialty_cycle(option) is True
     aiointercept_mock.assert_called_with(
         **_expected_call(washer, auth, backend_selector, expected_body)
