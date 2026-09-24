@@ -605,6 +605,213 @@ MACHINE_STATE_MAP = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Module-level payload builders (no Washer instance required)
+# ---------------------------------------------------------------------------
+# These functions allow the HA integration (and any other caller) to build
+# complete send_attributes() payloads from human-readable option strings
+# WITHOUT holding a Washer instance. They are the authoritative
+# protocol-knowledge layer; the integration must not duplicate
+# WASH_CYCLE_MATRIX, SPECIALTY_CYCLES, etc.
+
+
+def build_cycle_init_payload(wire: int) -> dict[str, str]:
+    """Build the DDM-initialization payload for a cycle identified by its wire value.
+
+    Returns CycleSelect plus every option attribute that has a DDM-proven
+    default for this cycle. Attributes absent from the cycle's
+    DDM CapabilityData (default_* field is None) are omitted.
+
+    R2 requirement: all normal and utility payloads explicitly clear the
+    specialty-cycle flags (Cavity_CycleSetDownloadAndGo=0,
+    Cavity_CycleSetSpecialtyCycleId=0).
+
+    Called by Washer.cycle_initialization_payload() (public instance shim)
+    and by build_wash_cycle_payload() / build_utility_cycle_payload().
+    """
+    payload: dict[str, str] = {ATTR_CYCLE_SELECT: str(wire)}
+    payload[ATTR_DOWNLOAD_AND_GO]    = "0"
+    payload[ATTR_SPECIALTY_CYCLE_ID] = "0"
+    cap = CYCLE_CAPABILITIES.get(wire)
+    if cap is None:
+        return payload
+    if cap.default_temperature is not None:
+        payload[ATTR_TEMPERATURE] = str(cap.default_temperature)
+    if cap.default_spin_speed is not None:
+        payload[ATTR_SPIN_SPEED] = str(cap.default_spin_speed)
+    if cap.default_soil_level is not None:
+        payload[ATTR_SOIL_LEVEL] = str(cap.default_soil_level)
+    if cap.default_presoak is not None:
+        payload[ATTR_PRESOAK] = str(cap.default_presoak)
+    if cap.default_extra_rinse is not None:
+        payload[ATTR_EXTRA_RINSE] = str(cap.default_extra_rinse)
+    if cap.default_fan_fresh is not None:
+        payload[ATTR_FRESHENING_SELECT] = str(cap.default_fan_fresh)
+    if cap.default_steam is not None:
+        payload[ATTR_STEAM_ENABLE] = str(cap.default_steam)
+    return payload
+
+
+def build_wash_cycle_payload(
+    what: str,
+    how: str,
+    *,
+    temperature: str | None = None,
+    spin_speed: str | None = None,
+    soil_level: str | None = None,
+    extra_rinse: str | None = None,
+    presoak: str | None = None,
+    fan_fresh: str | None = None,
+    steam: str | None = None,
+) -> dict[str, str]:
+    """Build a complete send_attributes() payload for a What+How wash cycle.
+
+    Starts from the DDM initialization defaults for the cycle (via
+    ``build_cycle_init_payload``), then overlays any user-specified options.
+    The integration uses this when the user presses "Send to Washer" with a
+    REGULAR cycle staged.
+
+    Raises ValueError for unknown what/how pairs or unknown option values.
+    """
+    if what == "bulky" and how == "sanitize":
+        raise ValueError(
+            "Bulky+Sanitize is not supported on this appliance "
+            "(absent from the DDM and from the official Whirlpool app)"
+        )
+    wire = WASH_CYCLE_MATRIX.get((what, how))
+    if wire is None:
+        raise ValueError(f"Unknown wash cycle combination: {what!r}/{how!r}")
+    payload = build_cycle_init_payload(wire)
+    if temperature is not None:
+        val = WASH_TEMPERATURE_VALUES.get(temperature)
+        if val is None:
+            raise ValueError(f"Unknown temperature option: {temperature!r}")
+        payload[ATTR_TEMPERATURE] = str(val)
+    if spin_speed is not None:
+        val = WASH_SPIN_SPEED_VALUES.get(spin_speed)
+        if val is None:
+            raise ValueError(f"Unknown spin speed option: {spin_speed!r}")
+        payload[ATTR_SPIN_SPEED] = str(val)
+    if soil_level is not None:
+        val = WASH_SOIL_LEVEL_VALUES.get(soil_level)
+        if val is None:
+            raise ValueError(f"Unknown soil level option: {soil_level!r}")
+        payload[ATTR_SOIL_LEVEL] = str(val)
+    if extra_rinse is not None:
+        val = WASH_EXTRA_RINSE_VALUES.get(extra_rinse)
+        if val is None:
+            raise ValueError(f"Unknown extra rinse option: {extra_rinse!r}")
+        payload[ATTR_EXTRA_RINSE] = str(val)
+    if presoak is not None:
+        val = WASH_PRESOAK_VALUES.get(presoak)
+        if val is None:
+            raise ValueError(f"Unknown presoak option: {presoak!r}")
+        payload[ATTR_PRESOAK] = str(val)
+    if fan_fresh is not None:
+        val = FRESHENING_VALUES.get(fan_fresh)
+        if val is None:
+            raise ValueError(f"Unknown fan fresh option: {fan_fresh!r}")
+        payload[ATTR_FRESHENING_SELECT] = str(val)
+    if steam is not None:
+        val = STEAM_ENABLE_VALUES.get(steam)
+        if val is None:
+            raise ValueError(f"Unknown steam option: {steam!r}")
+        payload[ATTR_STEAM_ENABLE] = str(val)
+    return payload
+
+
+def build_utility_cycle_payload(
+    utility: str,
+    *,
+    spin_speed: str | None = None,
+    extra_rinse: str | None = None,
+    fan_fresh: str | None = None,
+) -> dict[str, str]:
+    """Build a complete send_attributes() payload for a utility cycle.
+
+    Starts from the DDM initialization defaults for the utility cycle, then
+    overlays any user-specified options. The integration uses this when the
+    user presses "Send to Washer" with a UTILITY cycle staged.
+
+    Raises ValueError for unknown utility cycle keys or unknown option values.
+    """
+    wire = UTILITY_CYCLE_VALUES.get(utility)
+    if wire is None:
+        raise ValueError(f"Unknown utility cycle: {utility!r}")
+    payload = build_cycle_init_payload(wire)
+    if spin_speed is not None:
+        val = WASH_SPIN_SPEED_VALUES.get(spin_speed)
+        if val is None:
+            raise ValueError(f"Unknown spin speed option: {spin_speed!r}")
+        payload[ATTR_SPIN_SPEED] = str(val)
+    if extra_rinse is not None:
+        val = WASH_EXTRA_RINSE_VALUES.get(extra_rinse)
+        if val is None:
+            raise ValueError(f"Unknown extra rinse option: {extra_rinse!r}")
+        payload[ATTR_EXTRA_RINSE] = str(val)
+    if fan_fresh is not None:
+        val = FRESHENING_VALUES.get(fan_fresh)
+        if val is None:
+            raise ValueError(f"Unknown fan fresh option: {fan_fresh!r}")
+        payload[ATTR_FRESHENING_SELECT] = str(val)
+    return payload
+
+
+def build_specialty_cycle_payload(option: str) -> dict[str, str]:
+    """Build the exact seven-attribute payload for a specialty (Download & Go) cycle.
+
+    Returns the official payload shape: CycleSelect, SpecialtyCycleId=1,
+    DownloadAndGo=1, CycleName, Temperature, SpinSpeed, SoilLevel.
+    No Cavity_OpSetOperations — skipSetOperation=true for this model.
+
+    Raises ValueError for unknown specialty cycle option keys.
+    Evidence: LEVEL B (phase5c_ddm_results.json, SAID=WPR4FTPCM383E).
+    """
+    sc = SPECIALTY_CYCLES.get(option)
+    if sc is None:
+        raise ValueError(f"Unknown specialty cycle: {option!r}")
+    return {
+        ATTR_CYCLE_SELECT:       str(sc.base_cycle),
+        ATTR_SPECIALTY_CYCLE_ID: "1",
+        ATTR_DOWNLOAD_AND_GO:    "1",
+        ATTR_CYCLE_NAME:         sc.cycle_name,
+        ATTR_TEMPERATURE:        str(sc.temperature),
+        ATTR_SPIN_SPEED:         str(sc.spin_speed),
+        ATTR_SOIL_LEVEL:         str(sc.soil_level),
+    }
+
+
+def get_cycle_capability_for_pair(what: str, how: str) -> CycleCapability | None:
+    """Return the DDM CycleCapability for a What+How pair, or None if unknown.
+
+    Used by the HA integration's staging layer to compute per-cycle option
+    availability from the staged cycle, without duplicating WASH_CYCLE_MATRIX
+    or CYCLE_CAPABILITIES into the integration.
+    """
+    wire = WASH_CYCLE_MATRIX.get((what, how))
+    return None if wire is None else CYCLE_CAPABILITIES.get(wire)
+
+
+def get_cycle_capability_for_utility(utility: str) -> CycleCapability | None:
+    """Return the DDM CycleCapability for a utility cycle key, or None if unknown.
+
+    Used by the HA integration's staging layer. See get_cycle_capability_for_pair.
+    """
+    wire = UTILITY_CYCLE_VALUES.get(utility)
+    return None if wire is None else CYCLE_CAPABILITIES.get(wire)
+
+
+def get_specialty_cycle_capability() -> CycleCapability:
+    """Return the sentinel CycleCapability used while a specialty cycle is
+    active.
+
+    All per-cycle option selects are unavailable (non-editable) while a
+    specialty cycle is staged, because the DDM marks all specialty options
+    NonEditable. delay_time=True is the only flag set on this sentinel.
+    """
+    return _SPECIALTY_CAPABILITY
+
+
 class Washer(LaundryCommandsMixin, Appliance):
     def get_machine_state(self) -> MachineState | None:
         state_raw = self._get_attribute(ATTR_CYCLE_STATUS_MACHINE_STATE)
@@ -689,7 +896,7 @@ class Washer(LaundryCommandsMixin, Appliance):
         """Return whether a utility cycle (Drain & Spin / Clean Washer) is set."""
         return self.get_utility_cycle() is not None
 
-    def _cycle_initialization_payload(self, wire: int) -> dict[str, str]:
+    def cycle_initialization_payload(self, wire: int) -> dict[str, str]:
         """Build the full attribute payload for switching to cycle ``wire``.
 
         Returns a dict containing CycleSelect plus every option attribute that
@@ -706,33 +913,10 @@ class Washer(LaundryCommandsMixin, Appliance):
         seven-attribute payload is required before trusting this in production;
         see the open questions in WHIRLPOOL_WASHER_SPECIALTY_CYCLE_DESIGN.md §9.
 
-        This method is intentionally private: callers use set_wash_cycle_pair()
-        and set_utility_cycle(), which apply the necessary model/fetch guards.
+        Delegates to the module-level ``build_cycle_init_payload()`` so that
+        integration code can build payloads without holding a Washer instance.
         """
-        payload: dict[str, str] = {ATTR_CYCLE_SELECT: str(wire)}
-        # R2: DDM NonEditable requirement — all normal and utility cycle payloads
-        # must explicitly clear the specialty-cycle flags (confirmed by the DDM's
-        # per-normal-cycle NonEditable block: Cavity_CycleSetDownloadAndGo=0).
-        payload[ATTR_DOWNLOAD_AND_GO]    = "0"
-        payload[ATTR_SPECIALTY_CYCLE_ID] = "0"
-        cap = CYCLE_CAPABILITIES.get(wire)
-        if cap is None:
-            return payload
-        if cap.default_temperature is not None:
-            payload[ATTR_TEMPERATURE] = str(cap.default_temperature)
-        if cap.default_spin_speed is not None:
-            payload[ATTR_SPIN_SPEED] = str(cap.default_spin_speed)
-        if cap.default_soil_level is not None:
-            payload[ATTR_SOIL_LEVEL] = str(cap.default_soil_level)
-        if cap.default_presoak is not None:
-            payload[ATTR_PRESOAK] = str(cap.default_presoak)
-        if cap.default_extra_rinse is not None:
-            payload[ATTR_EXTRA_RINSE] = str(cap.default_extra_rinse)
-        if cap.default_fan_fresh is not None:
-            payload[ATTR_FRESHENING_SELECT] = str(cap.default_fan_fresh)
-        if cap.default_steam is not None:
-            payload[ATTR_STEAM_ENABLE] = str(cap.default_steam)
-        return payload
+        return build_cycle_init_payload(wire)
 
     async def set_utility_cycle(self, utility: str) -> bool:
         """Select a utility cycle ('drain_spin' or 'clean_washer').
@@ -761,7 +945,7 @@ class Washer(LaundryCommandsMixin, Appliance):
         if self.cycle_select_changeable() is not True:
             return False
         return await self.send_attributes(
-            self._cycle_initialization_payload(value)
+            self.cycle_initialization_payload(value)
         )
 
     # ------------------------------------------------------------------
@@ -1288,7 +1472,7 @@ class Washer(LaundryCommandsMixin, Appliance):
         if not self.has_attribute(ATTR_CYCLE_SELECT):
             return False
         return await self.send_attributes(
-            self._cycle_initialization_payload(value)
+            self.cycle_initialization_payload(value)
         )
 
     def get_dispense_1_enable(self) -> str | None:

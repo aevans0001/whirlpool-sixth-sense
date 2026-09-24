@@ -922,14 +922,12 @@ async def test_set_wash_cycle_pair_sends_exact_wire_value(
     aiointercept_mock: aiointercept,
     client_session_fixture,
 ):
-    """set_wash_cycle_pair sends CycleSelect + all nine DDM defaults in one call.
+    """set_wash_cycle_pair sends CycleSelect + all seven DDM defaults in one call.
 
     Cycle 47 (Colors+Quick): confirmed DDM defaults from phase5c_ddm_results.json.
-    The official Whirlpool app writes all destination-cycle defaults atomically;
-    this test asserts the exact same nine-attribute body plus CycleSelect
-    (LEVEL B evidence). Specialty-clear fields (DownloadAndGo=0,
-    SpecialtyCycleId=0) are always included to atomically exit any active
-    specialty cycle on the appliance.
+    The official Whirlpool app writes all destination-cycle defaults atomically.
+    The payload also includes DownloadAndGo=0 and SpecialtyCycleId=0 to
+    atomically exit any active specialty cycle.
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
@@ -1397,8 +1395,7 @@ async def test_cycle_init_payload_colors_normal_sends_ten_key_body(
     DDM CapabilityData for cycle 24 lists all seven option attributes with
     defaults: Warm (2), High (4), Light (0), presoak/extra_rinse/fan_fresh/
     steam all at 0. The payload must contain all ten keys, including the two
-    specialty-clear fields (DownloadAndGo=0, SpecialtyCycleId=0) that
-    atomically deactivate any active Download & Go preset.
+    specialty-clear fields.
     Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
     """
     washer = await _make_wfw_washer(
@@ -1439,8 +1436,6 @@ async def test_cycle_init_payload_delicates_normal_sends_ten_key_body(
     LEVEL A evidence: the official Whirlpool app was observed writing cycle 5
     with Temperature=2 (Warm), SpinSpeed=2 (Low/Slow), SoilLevel=1 (Normal),
     and presoak/extra_rinse/fan_fresh/steam all at 0 in a single request.
-    The two specialty-clear fields (DownloadAndGo=0, SpecialtyCycleId=0) are
-    additionally included to atomically deactivate any active specialty cycle.
     This test locks that exact payload so a stale-default regression fails
     loudly.
     """
@@ -1482,8 +1477,6 @@ async def test_cycle_init_payload_sanitize_omits_presoak_key(
     Sanitize variants declare presoak=False in their DDM CapabilityData, so
     default_presoak is None and the key must be absent from the payload.
     Including a stale presoak value from a previous cycle would be wrong.
-    The two specialty-clear fields (DownloadAndGo=0, SpecialtyCycleId=0) are
-    always present; PresoakTimed is not.
     Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
     """
     washer = await _make_wfw_washer(
@@ -1524,8 +1517,6 @@ async def test_cycle_init_payload_coldwash_omits_steam_key(
     from their DDM CapabilityData), so default_steam is None and the key must
     not appear in the payload. Sending a stale steam value to a ColdWash cycle
     the appliance does not accept would produce undefined behaviour at Start.
-    The two specialty-clear fields (DownloadAndGo=0, SpecialtyCycleId=0) are
-    always present; SteamEnable is not.
     Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
     """
     washer = await _make_wfw_washer(
@@ -1579,15 +1570,12 @@ async def test_cycle_init_payload_unknown_cycle_includes_specialty_clear(
     """A cycle value absent from CYCLE_CAPABILITIES yields a 3-key payload.
 
     Cycle 0 is not a DDM-defined value for this appliance. The payload builder
-    must not invent option defaults for cycles it has no evidence for, but must
-    still include the two specialty-clear fields (DownloadAndGo=0,
-    SpecialtyCycleId=0) that are unconditionally written on every normal/utility
-    cycle selection.
+    must not invent defaults for cycles it has no evidence for.
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
     )
-    payload = washer._cycle_initialization_payload(0)
+    payload = washer.cycle_initialization_payload(0)
     assert payload == {
         "WashCavity_CycleSetCycleSelect": "0",
         "Cavity_CycleSetDownloadAndGo": "0",
@@ -1878,11 +1866,12 @@ async def test_set_specialty_cycle_sends_exact_7_key_payload(
     option: str,
     expected_body: dict,
 ):
-    """Every specialty cycle sends the exact seven-key SaveLoadAndGo payload.
+    """Every specialty cycle sends exactly seven NonEditable wire attributes atomically.
 
-    All seven cycle/preset values come from the WFW9620HBK3 DDM. The Whirlpool
-    6.8.4 APK and target DDM prove Cavity_OpSetOperations is skipped for this
-    model. The payload must contain no other attributes.
+    All seven keys and their values are DDM-proven per phase5c_ddm_results.json
+    §SetDownloadAndGo CapabilityData (SAID=WPR4FTPCM383E). The payload must
+    contain no other attributes.
+    Evidence: LEVEL B.
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
@@ -2192,3 +2181,222 @@ async def test_utility_cycle_init_payload_includes_download_and_go_clear(
     ][-1].kwargs["json"]["body"]
     assert sent.get("Cavity_CycleSetDownloadAndGo") == "0"
     assert sent.get("Cavity_CycleSetSpecialtyCycleId") == "0"
+
+# ===========================================================================
+# PASS 7A — Pure library payload builder tests
+# ===========================================================================
+# These tests verify the module-level builder functions
+# (build_wash_cycle_payload, build_utility_cycle_payload,
+# build_specialty_cycle_payload) in isolation — no HTTP mocking needed.
+# ===========================================================================
+
+
+def test_build_wash_cycle_payload_regular_normal_includes_dag_clear():
+    """Regular/Normal payload includes DownloadAndGo=0 and SpecialtyCycleId=0.
+
+    Rule R2: every non-specialty cycle payload must explicitly clear the
+    specialty-mode flags so the appliance exits specialty mode.
+    """
+    from whirlpool.washer import build_wash_cycle_payload
+
+    payload = build_wash_cycle_payload("regular", "normal")
+    assert payload["WashCavity_CycleSetCycleSelect"] == "1"
+    assert payload["Cavity_CycleSetDownloadAndGo"] == "0"
+    assert payload["Cavity_CycleSetSpecialtyCycleId"] == "0"
+
+
+def test_build_wash_cycle_payload_user_temperature_overrides_default():
+    """A caller-supplied temperature replaces the DDM default.
+
+    Colors/Normal has default_temperature=2 (Warm); passing temperature="cold"
+    must yield "0" in the payload, not the default "2".
+    """
+    from whirlpool.washer import build_wash_cycle_payload
+
+    payload = build_wash_cycle_payload("colors", "normal", temperature="cold")
+    assert payload["WashCavity_CycleSetTemperature"] == "0"
+
+
+def test_build_wash_cycle_payload_user_spin_speed_overrides_default():
+    """A caller-supplied spin speed replaces the DDM default."""
+    from whirlpool.washer import build_wash_cycle_payload
+
+    payload = build_wash_cycle_payload("regular", "normal", spin_speed="low")
+    assert payload["WashCavity_CycleSetSpinSpeed"] == "2"
+
+
+def test_build_wash_cycle_payload_unknown_pair_raises():
+    """An unknown What/How combination raises ValueError."""
+    import pytest
+
+    from whirlpool.washer import build_wash_cycle_payload
+
+    with pytest.raises(ValueError, match="Unknown wash cycle combination"):
+        build_wash_cycle_payload("regular", "timed_dry")
+
+
+def test_build_wash_cycle_payload_bulky_sanitize_raises():
+    """Bulky+Sanitize is absent from the DDM — must raise ValueError."""
+    import pytest
+
+    from whirlpool.washer import build_wash_cycle_payload
+
+    with pytest.raises(ValueError, match="Bulky.Sanitize"):
+        build_wash_cycle_payload("bulky", "sanitize")
+
+
+def test_build_wash_cycle_payload_unknown_temperature_raises():
+    """An unknown temperature option string raises ValueError."""
+    import pytest
+
+    from whirlpool.washer import build_wash_cycle_payload
+
+    with pytest.raises(ValueError, match="Unknown temperature"):
+        build_wash_cycle_payload("regular", "normal", temperature="scalding")
+
+
+def test_build_wash_cycle_payload_no_op_1003():
+    """Regular cycle payload must never contain Cavity_OpSetOperations."""
+    from whirlpool.washer import build_wash_cycle_payload
+
+    payload = build_wash_cycle_payload("regular", "normal")
+    assert "Cavity_OpSetOperations" not in payload
+
+
+def test_build_utility_cycle_payload_drain_spin_includes_dag_clear():
+    """Drain & Spin payload includes DownloadAndGo=0 and SpecialtyCycleId=0."""
+    from whirlpool.washer import build_utility_cycle_payload
+
+    payload = build_utility_cycle_payload("drain_spin")
+    assert payload["WashCavity_CycleSetCycleSelect"] == "8"
+    assert payload["Cavity_CycleSetDownloadAndGo"] == "0"
+    assert payload["Cavity_CycleSetSpecialtyCycleId"] == "0"
+
+
+def test_build_utility_cycle_payload_clean_washer():
+    """Clean Washer payload selects the correct cycle wire value (20)."""
+    from whirlpool.washer import build_utility_cycle_payload
+
+    payload = build_utility_cycle_payload("clean_washer")
+    assert payload["WashCavity_CycleSetCycleSelect"] == "20"
+
+
+def test_build_utility_cycle_payload_spin_speed_override():
+    """Caller-supplied spin speed is applied to the utility payload."""
+    from whirlpool.washer import build_utility_cycle_payload
+
+    payload = build_utility_cycle_payload("drain_spin", spin_speed="medium")
+    assert payload["WashCavity_CycleSetSpinSpeed"] == "3"
+
+
+def test_build_utility_cycle_payload_unknown_utility_raises():
+    """An unknown utility cycle key raises ValueError."""
+    import pytest
+
+    from whirlpool.washer import build_utility_cycle_payload
+
+    with pytest.raises(ValueError, match="Unknown utility cycle"):
+        build_utility_cycle_payload("turbo_wash")
+
+
+def test_build_utility_cycle_payload_no_op_1003():
+    """Utility cycle payload must never contain Cavity_OpSetOperations."""
+    from whirlpool.washer import build_utility_cycle_payload
+
+    payload = build_utility_cycle_payload("drain_spin")
+    assert "Cavity_OpSetOperations" not in payload
+
+
+@pytest.mark.parametrize(
+    "option,expected_cycle_select,expected_dag,expected_cycle_name",
+    [
+        ("coats_jackets",         "70", "1", "Jackets"),
+        ("diapers",               "92", "1", "Diapers"),
+        ("sleeping_bags",         "22", "1", "SleepingBags"),
+        ("comforters",            "90", "1", "Comforters"),
+        ("machine_wash_curtains", "44", "1", "Curtains"),
+        ("swimwear",              "65", "1", "Swimwear"),
+        ("activewear",            "1",  "1", "Activewear"),
+        ("jeans",                 "11", "1", "Jeans"),
+        ("blankets",              "50", "1", "Blankets"),
+        ("lingerie",              "70", "1", "Lingerie"),
+        ("business_casual",       "16", "1", "BusinessCasual"),
+    ],
+)
+def test_build_specialty_cycle_payload_all_presets(
+    option: str,
+    expected_cycle_select: str,
+    expected_dag: str,
+    expected_cycle_name: str,
+):
+    """All 11 specialty presets produce the correct seven-key payload.
+
+    Verifies CycleSelect, DownloadAndGo=1, SpecialtyCycleId=1, and CycleName
+    for every preset. Temperature, SpinSpeed and SoilLevel are checked to be
+    present (exact values locked by the per-preset wire-value tests in the
+    existing test suite above).
+    """
+    from whirlpool.washer import build_specialty_cycle_payload
+
+    payload = build_specialty_cycle_payload(option)
+    assert payload["WashCavity_CycleSetCycleSelect"] == expected_cycle_select
+    assert payload["Cavity_CycleSetDownloadAndGo"] == expected_dag
+    assert payload["Cavity_CycleSetSpecialtyCycleId"] == "1"
+    assert payload["Cavity_CycleSetCycleName"] == expected_cycle_name
+    # Temperature, SpinSpeed, SoilLevel must be present (exact values locked by the
+    # parametrised specialty-exact-payload tests in the existing suite).
+    assert "WashCavity_CycleSetTemperature" in payload
+    assert "WashCavity_CycleSetSpinSpeed" in payload
+    assert "WashCavity_CycleSetSoilLevel" in payload
+    # Exactly seven keys — no extras.
+    assert len(payload) == 7
+
+
+def test_build_specialty_cycle_payload_coats_vs_lingerie_disambiguated_by_cyclename():
+    """coats_jackets and lingerie both use CycleSelect=70 — CycleName differs.
+
+    This is the wire-level discriminator test: confirms that sending the wrong
+    preset cannot be masked by CycleSelect alone.
+    """
+    from whirlpool.washer import build_specialty_cycle_payload
+
+    coats = build_specialty_cycle_payload("coats_jackets")
+    lingerie = build_specialty_cycle_payload("lingerie")
+    # Same base cycle
+    assert coats["WashCavity_CycleSetCycleSelect"] == "70"
+    assert lingerie["WashCavity_CycleSetCycleSelect"] == "70"
+    # Same DownloadAndGo
+    assert coats["Cavity_CycleSetDownloadAndGo"] == "1"
+    assert lingerie["Cavity_CycleSetDownloadAndGo"] == "1"
+    # Different CycleName — sole discriminator
+    assert coats["Cavity_CycleSetCycleName"] == "Jackets"
+    assert lingerie["Cavity_CycleSetCycleName"] == "Lingerie"
+    assert coats["Cavity_CycleSetCycleName"] != lingerie["Cavity_CycleSetCycleName"]
+
+
+def test_build_specialty_cycle_payload_unknown_raises():
+    """An unknown specialty option key raises ValueError."""
+    import pytest
+
+    from whirlpool.washer import build_specialty_cycle_payload
+
+    with pytest.raises(ValueError, match="Unknown specialty cycle"):
+        build_specialty_cycle_payload("pet_hair")
+
+
+def test_build_specialty_cycle_payload_no_op_1003():
+    """Specialty cycle payload must never contain Cavity_OpSetOperations.
+
+    skipSetOperation=true is the documented API144 behavior for WFW9620HBK3.
+    """
+    from whirlpool.washer import build_specialty_cycle_payload
+
+    for option in [
+        "coats_jackets", "diapers", "sleeping_bags", "comforters",
+        "machine_wash_curtains", "swimwear", "activewear", "jeans",
+        "blankets", "lingerie", "business_casual",
+    ]:
+        payload = build_specialty_cycle_payload(option)
+        assert "Cavity_OpSetOperations" not in payload, (
+            f"op=1003 must not appear in specialty payload for {option!r}"
+        )
