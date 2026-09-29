@@ -1683,3 +1683,135 @@ async def test_cycle_capability_regular_normal_includes_presoak_and_steam():
     assert cap.steam is True
     assert cap.default_presoak == 0
     assert cap.default_steam == 0
+
+
+# --- Complete wash-cycle recipes ------------------------------------------
+
+
+async def test_wash_cycle_recipe_andrews_jacket(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """Andrew's Jacket overrides Delicates/Normal in one atomic request."""
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    url = backend_selector.appliance_command_url
+    aiointercept_mock.post(url, payload={})
+
+    assert await washer.set_wash_cycle_recipe(
+        "delicates",
+        "normal",
+        temperature="cold",
+        soil_level="light",
+        spin_speed="low",
+        extra_rinse="on",
+        fan_fresh="on",
+        steam="off",
+    ) is True
+
+    aiointercept_mock.assert_called_with(
+        **_expected_call(
+            washer,
+            auth,
+            backend_selector,
+            {
+                "WashCavity_CycleSetCycleSelect": "5",
+                "WashCavity_CycleSetTemperature": "0",
+                "WashCavity_CycleSetSpinSpeed": "2",
+                "WashCavity_CycleSetSoilLevel": "0",
+                "WashCavity_CycleSetPresoakTimed": "0",
+                "WashCavity_CycleSetExtraRinseSelect": "1",
+                "WashCavity_CycleSetFresheningSelect": "1",
+                "Cavity_CycleSetSteamEnable": "0",
+            },
+        )
+    )
+
+
+async def test_wash_cycle_recipe_towels(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """Towels applies the requested Delicates/Heavy Duty recipe atomically."""
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    url = backend_selector.appliance_command_url
+    aiointercept_mock.post(url, payload={})
+
+    assert await washer.set_wash_cycle_recipe(
+        "delicates",
+        "heavy_duty",
+        temperature="warm",
+        soil_level="normal",
+        spin_speed="high",
+        presoak="off",
+        extra_rinse="off",
+        fan_fresh="on",
+        steam="off",
+    ) is True
+
+    aiointercept_mock.assert_called_with(
+        **_expected_call(
+            washer,
+            auth,
+            backend_selector,
+            {
+                "WashCavity_CycleSetCycleSelect": "67",
+                "WashCavity_CycleSetTemperature": "2",
+                "WashCavity_CycleSetSpinSpeed": "4",
+                "WashCavity_CycleSetSoilLevel": "1",
+                "WashCavity_CycleSetPresoakTimed": "0",
+                "WashCavity_CycleSetExtraRinseSelect": "0",
+                "WashCavity_CycleSetFresheningSelect": "1",
+                "Cavity_CycleSetSteamEnable": "0",
+            },
+        )
+    )
+
+
+async def test_wash_cycle_recipe_socks_omits_presoak(
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+    client_session_fixture,
+):
+    """Socks uses Whites/Sanitize and must not send unsupported Presoak."""
+    washer = await _make_wfw_washer(
+        auth, backend_selector, client_session_fixture, aiointercept_mock
+    )
+    url = backend_selector.appliance_command_url
+    aiointercept_mock.post(url, payload={})
+
+    assert await washer.set_wash_cycle_recipe(
+        "whites",
+        "sanitize",
+        temperature="extra_hot",
+        soil_level="heavy",
+        spin_speed="extra_high",
+        extra_rinse="off",
+        fan_fresh="on",
+        steam="on",
+    ) is True
+
+    aiointercept_mock.assert_called_with(
+        **_expected_call(
+            washer,
+            auth,
+            backend_selector,
+            {
+                "WashCavity_CycleSetCycleSelect": "92",
+                "WashCavity_CycleSetTemperature": "4",
+                "WashCavity_CycleSetSpinSpeed": "5",
+                "WashCavity_CycleSetSoilLevel": "2",
+                "WashCavity_CycleSetExtraRinseSelect": "0",
+                "WashCavity_CycleSetFresheningSelect": "1",
+                "Cavity_CycleSetSteamEnable": "1",
+            },
+        )
+    )

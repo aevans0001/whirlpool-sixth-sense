@@ -1142,6 +1142,151 @@ class Washer(LaundryCommandsMixin, Appliance):
             self._cycle_initialization_payload(value)
         )
 
+    async def set_wash_cycle_recipe(
+        self,
+        what: str,
+        how: str,
+        *,
+        temperature: str | None = None,
+        spin_speed: str | None = None,
+        soil_level: str | None = None,
+        presoak: str | None = None,
+        extra_rinse: str | None = None,
+        fan_fresh: str | None = None,
+        steam: str | None = None,
+    ) -> bool:
+        """Set a What+How cycle and optional overrides in one request.
+
+        Build the destination cycle's normal DDM initialization payload first,
+        then replace only requested option values supported by that destination
+        cycle. This avoids validating overrides against stale current-cycle
+        state while preserving the proven regular-cycle payload shape.
+        """
+        if what == "bulky" and how == "sanitize":
+            raise ValueError(
+                "Bulky+Sanitize is not supported on this appliance "
+                "(absent from the DDM and from the official Whirlpool app)"
+            )
+
+        wire = WASH_CYCLE_MATRIX.get((what, how))
+        if wire is None:
+            raise ValueError(
+                f"Unknown wash cycle combination: {what!r}/{how!r}"
+            )
+
+        if not self.has_attribute(ATTR_CYCLE_SELECT):
+            return False
+
+        capability = CYCLE_CAPABILITIES.get(wire)
+        if capability is None:
+            raise ValueError(f"No capability data for wash cycle: {wire}")
+
+        payload = self._cycle_initialization_payload(wire)
+
+        if temperature is not None:
+            if temperature not in WASH_TEMPERATURE_VALUES:
+                raise ValueError(
+                    f"Unknown temperature option: {temperature!r}"
+                )
+            value = WASH_TEMPERATURE_VALUES[temperature]
+            if not capability.temperatures:
+                raise ValueError(
+                    "temperature is not available on the destination cycle"
+                )
+            if value not in capability.temperatures:
+                raise ValueError(
+                    f"temperature {temperature!r} is not valid for "
+                    "the destination cycle"
+                )
+            payload[ATTR_TEMPERATURE] = str(value)
+
+        if spin_speed is not None:
+            if spin_speed not in WASH_SPIN_SPEED_VALUES:
+                raise ValueError(
+                    f"Unknown spin speed option: {spin_speed!r}"
+                )
+            value = WASH_SPIN_SPEED_VALUES[spin_speed]
+            if not capability.spin_speeds:
+                raise ValueError(
+                    "spin speed is not available on the destination cycle"
+                )
+            if value not in capability.spin_speeds:
+                raise ValueError(
+                    f"spin speed {spin_speed!r} is not valid for "
+                    "the destination cycle"
+                )
+            payload[ATTR_SPIN_SPEED] = str(value)
+
+        if soil_level is not None:
+            if soil_level not in WASH_SOIL_LEVEL_VALUES:
+                raise ValueError(
+                    f"Unknown soil level option: {soil_level!r}"
+                )
+            value = WASH_SOIL_LEVEL_VALUES[soil_level]
+            if not capability.soil_levels:
+                raise ValueError(
+                    "soil level is not available on the destination cycle"
+                )
+            if value not in capability.soil_levels:
+                raise ValueError(
+                    f"soil level {soil_level!r} is not valid for "
+                    "the destination cycle"
+                )
+            payload[ATTR_SOIL_LEVEL] = str(value)
+
+        if presoak is not None:
+            if presoak not in WASH_PRESOAK_VALUES:
+                raise ValueError(
+                    f"Unknown presoak option: {presoak!r}"
+                )
+            if not capability.presoak:
+                raise ValueError(
+                    "presoak is not available on the destination cycle"
+                )
+            payload[ATTR_PRESOAK] = str(
+                WASH_PRESOAK_VALUES[presoak]
+            )
+
+        if extra_rinse is not None:
+            if extra_rinse not in WASH_EXTRA_RINSE_VALUES:
+                raise ValueError(
+                    f"Unknown extra rinse option: {extra_rinse!r}"
+                )
+            if not capability.extra_rinse:
+                raise ValueError(
+                    "extra rinse is not available on the destination cycle"
+                )
+            payload[ATTR_EXTRA_RINSE] = str(
+                WASH_EXTRA_RINSE_VALUES[extra_rinse]
+            )
+
+        if fan_fresh is not None:
+            if fan_fresh not in FRESHENING_VALUES:
+                raise ValueError(
+                    f"Unknown Fan Fresh option: {fan_fresh!r}"
+                )
+            if not capability.fan_fresh:
+                raise ValueError(
+                    "Fan Fresh is not available on the destination cycle"
+                )
+            payload[ATTR_FRESHENING_SELECT] = str(
+                FRESHENING_VALUES[fan_fresh]
+            )
+
+        if steam is not None:
+            if steam not in STEAM_ENABLE_VALUES:
+                raise ValueError(
+                    f"Unknown Steam option: {steam!r}"
+                )
+            if not capability.steam:
+                raise ValueError(
+                    "Steam is not available on the destination cycle"
+                )
+            payload[ATTR_STEAM_ENABLE] = str(
+                STEAM_ENABLE_VALUES[steam]
+            )
+
+        return await self.send_attributes(payload)
     def get_dispense_1_enable(self) -> str | None:
         raw = self._get_int_attribute(ATTR_DISPENSE_1_ENABLE)
         return None if raw is None else DISPENSER_ENABLE_REVERSE.get(raw)
