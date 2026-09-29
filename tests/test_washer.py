@@ -221,7 +221,7 @@ CYCLE_WHITES_SANITIZE = 92  # WashCycleWhatToWhitesHowToSanitize
 
 def _wfw_attributes(**overrides: object) -> dict:
     """Build a WFW9620HBK3 attribute payload with everything changeable."""
-    base = {
+    base: dict[str, object] = {
         "WashCavity_CycleSetCycleSelect": CYCLE_REGULAR_NORMAL,
         "WashCavity_CycleSetTemperature": 2,
         "WashCavity_CycleSetSpinSpeed": 5,
@@ -1618,7 +1618,7 @@ async def test_cycle_init_payload_is_destination_only_not_a_diff(
         WashCavity_CycleSetPresoakTimed=0,
         WashCavity_CycleSetExtraRinseSelect=0,
         WashCavity_CycleSetFresheningSelect=0,
-        **{"Cavity_CycleSetSteamEnable": 0},
+        Cavity_CycleSetSteamEnable=0,
     )
     url = backend_selector.appliance_command_url
     aiointercept_mock.post(url, payload={})

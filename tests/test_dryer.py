@@ -343,9 +343,9 @@ async def test_utility_cycle_steam_refresh_sends_cycle_select(
     posted = aiointercept_mock.requests[("POST", URL(url))]
     assert len(posted) == 1
     for req in posted:
-        assert "DryCavity_CycleSetWrinkleShield" not in req.kwargs.get("json", {}).get(
-            "body", {}
-        )
+        assert "DryCavity_CycleSetWrinkleShield" not in (
+            req.kwargs.get("json") or {}
+        ).get("body", {})
 
 
 # ---------------------------------------------------------------------------
