@@ -62,8 +62,8 @@ ATTRVAL_CYCLE_TOWELS = "15"
 ATTRVAL_CYCLE_WHITES = "16"
 ATTRVAL_CYCLE_NORMAL = "41"
 
-# Matrix (What+How) cycle values — DDM-proven on WED9620HBK2 (SAID=WPR4PNMB4BKCF,
-# ccuri=API144_LAUNDRY_V17). All values 17–40 are confirmed from the live DDM
+# Matrix (What+How) cycle values — DDM-proven on WED9620HBK2
+# (ccuri=API144_LAUNDRY_V17). All values 17–40 are confirmed from the live DDM
 # capture; see Phase 5B-5D analysis artifacts.
 ATTRVAL_CYCLE_COLORS_HEAVY_DUTY = "17"
 ATTRVAL_CYCLE_COLORS_QUICK = "18"

@@ -1014,7 +1014,7 @@ async def test_set_utility_cycle_drain_spin_sends_exact_wire_value(
     DDM CapabilityData for cycle 8 lists spin, extra_rinse, and freshening only.
     The initialization payload must not include Temperature, SoilLevel, Presoak
     or SteamEnable, which are absent from this cycle's capability entry entirely.
-    Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
+    Evidence: LEVEL B (private model capability capture).
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
@@ -1047,7 +1047,7 @@ async def test_set_utility_cycle_clean_washer_sends_only_cycle_select(
 
     DDM CapabilityData for cycle 20 has an empty Required and empty Optional
     block. The payload must contain only CycleSelect and nothing else.
-    Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
+    Evidence: LEVEL B (private model capability capture).
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
@@ -1386,7 +1386,7 @@ async def test_cycle_init_payload_colors_normal_sends_eight_key_body(
     DDM CapabilityData for cycle 24 lists all seven option attributes with
     defaults: Warm (2), High (4), Light (0), presoak/extra_rinse/fan_fresh/
     steam all at 0. The payload must contain all eight keys.
-    Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
+    Evidence: LEVEL B (private model capability capture).
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
@@ -1463,7 +1463,7 @@ async def test_cycle_init_payload_sanitize_omits_presoak_key(
     Sanitize variants declare presoak=False in their DDM CapabilityData, so
     default_presoak is None and the key must be absent from the payload.
     Including a stale presoak value from a previous cycle would be wrong.
-    Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
+    Evidence: LEVEL B (private model capability capture).
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
@@ -1501,7 +1501,7 @@ async def test_cycle_init_payload_coldwash_omits_steam_key(
     from their DDM CapabilityData), so default_steam is None and the key must
     not appear in the payload. Sending a stale steam value to a ColdWash cycle
     the appliance does not accept would produce undefined behaviour at Start.
-    Evidence: LEVEL B (phase5c_ddm_results.json, WPR4FTPCM383E).
+    Evidence: LEVEL B (private model capability capture).
     """
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
@@ -1688,13 +1688,13 @@ async def test_cycle_capability_regular_normal_includes_presoak_and_steam():
 # --- Complete wash-cycle recipes ------------------------------------------
 
 
-async def test_wash_cycle_recipe_andrews_jacket(
+async def test_wash_cycle_recipe_delicates_normal_overrides(
     auth: Auth,
     backend_selector: BackendSelector,
     aiointercept_mock: aiointercept,
     client_session_fixture,
 ):
-    """Andrew's Jacket overrides Delicates/Normal in one atomic request."""
+    """Delicates/Normal overrides are sent in one atomic request."""
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
     )
@@ -1731,13 +1731,13 @@ async def test_wash_cycle_recipe_andrews_jacket(
     )
 
 
-async def test_wash_cycle_recipe_towels(
+async def test_wash_cycle_recipe_delicates_heavy_duty_overrides(
     auth: Auth,
     backend_selector: BackendSelector,
     aiointercept_mock: aiointercept,
     client_session_fixture,
 ):
-    """Towels applies the requested Delicates/Heavy Duty recipe atomically."""
+    """Delicates/Heavy Duty overrides are sent atomically."""
     washer = await _make_wfw_washer(
         auth, backend_selector, client_session_fixture, aiointercept_mock
     )

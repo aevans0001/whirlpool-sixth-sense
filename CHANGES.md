@@ -5,9 +5,9 @@ real, tagged `1.3.1` release
 (`https://github.com/abmantis/whirlpool-sixth-sense`, tag `1.3.1`) — this
 is the exact version Home Assistant Core 2026.8.3's built-in `whirlpool`
 integration pins in its manifest (`whirlpool-sixth-sense==1.3.1`), and
-therefore the exact version Adam's installation actually uses. This
+therefore the exact version the original compatibility deployment uses. This
 corrects Phase 5F, whose `feature/api144-laundry-controls` branch was
-baselined against commit `33dce79` (post-`2.0.1`), which Adam does not
+baselined against commit `33dce79` (post-`2.0.1`), which that deployment does not
 run. **The Phase 5F branch is preserved, not deleted** - it remains
 relevant as a forward-port for whenever HA Core eventually adopts 2.x.
 
@@ -92,7 +92,7 @@ reflection check in `manual_smoke_test_131.py`.
   13 passed, 0 failed.
 - The real suite (`tests/test_washer.py`, `tests/test_dryer.py`, and the
   rest of `tests/`) was NOT executed here for the same reason. Exact
-  commands for Adam to run it himself are in the implementation report.
+  commands for a local validation run are in the private implementation report.
 
 ## Evidence basis
 

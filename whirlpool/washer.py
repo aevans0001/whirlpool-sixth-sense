@@ -275,7 +275,7 @@ CYCLE_CAPABILITIES: dict[int, CycleCapability] = {
     # defaults (no cycle to initialize).
     0: CycleCapability(),
     # Regular family: SpinSpeedLow absent from all five.
-    # DDM defaults from phase5c_ddm_results.json (LEVEL B, WPR4FTPCM383E).
+    # DDM defaults from the private model capability capture (LEVEL B).
     1: _wash_cycle_capability(
         _TEMPERATURES_ALL, _SPIN_SPEEDS_NO_LOW,
         default_temperature=2, default_spin_speed=5, default_soil_level=1,
