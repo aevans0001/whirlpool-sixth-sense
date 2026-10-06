@@ -47,7 +47,7 @@ def _oven() -> tuple[Oven, FakeMqttClient]:
         said="OVEN1",
         name="My Oven",
         category="cooking",
-        model_number="KOED730SBE00",
+        model_number="OVENMODEL1",
         serial_number="TEST",
     )
     oven = Oven(cast(MqttClient, mqtt), info, CAPABILITIES)
