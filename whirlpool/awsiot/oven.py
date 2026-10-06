@@ -284,7 +284,7 @@ class Oven(BaseOven, Appliance):
 
     @override
     def get_cook_mode(self, cavity: Cavity = Cavity.Upper) -> CookMode | None:
-        value = self._cavity_value(cavity, "cookMode", "recipeId", "recipeID", "mode")
+        value = self._cavity_value(\n            cavity, "cookMode", "recipeId", "recipeID", "mode"\n        )
         mapping = {
             "standby": CookMode.Standby,
             "bake": CookMode.Bake,
@@ -312,15 +312,15 @@ class Oven(BaseOven, Appliance):
 
     def get_configured_cook_mode(self, cavity: Cavity) -> CookMode:
         active = self.get_cook_mode(cavity)
-        return (
-            active
-            if active not in {None, CookMode.Standby}
-            else self._staged_modes[cavity]
-        )
+        if active is not None and active is not CookMode.Standby:
+            return active
+        return self._staged_modes[cavity]
 
     def get_configured_target_temp(self, cavity: Cavity) -> float:
         active = self.get_target_temp(cavity)
-        return active if active not in {None, 0} else self._staged_temperatures[cavity]
+        if active is not None and active != 0:
+            return active
+        return self._staged_temperatures[cavity]
 
     def stage_cook_mode(self, mode: CookMode, cavity: Cavity) -> None:
         if mode is CookMode.Standby:
