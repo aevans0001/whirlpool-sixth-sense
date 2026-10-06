@@ -159,6 +159,9 @@ class AppliancesManager:
                     parse_microwave_capability_profile(raw_capabilities),
                 )
                 self._microwaves[appliance_data.said] = appliance
+            else:
+                appliance = Oven(self._mqtt, appliance_data, raw_capabilities)
+                self._ovens[appliance_data.said] = appliance
         if appliance is None:
             LOGGER.warning(
                 "Unsupported appliance category %s for %s",
