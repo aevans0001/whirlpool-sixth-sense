@@ -393,11 +393,6 @@ class Oven(BaseOven, Appliance):
         delay_cook: int | None = None,
         operation_type: CookOperation = CookOperation.Start,
     ) -> bool:
-        if operation_type is CookOperation.Cancel:
-            return await self.stop_cook(cavity)
-        if operation_type not in {CookOperation.Start, CookOperation.Modify}:
-            return False
-
         recipe = self._RECIPE_BY_MODE.get(mode)
         if recipe is None:
             raise ValueError(f"Unsupported cook mode: {mode}")
@@ -408,11 +403,7 @@ class Oven(BaseOven, Appliance):
                 f"Target temperature must be between {minimum} and {maximum} C"
             )
 
-        delay_seconds = (
-            self._staged_delay_seconds[cavity]
-            if delay_cook is None
-            else max(0, int(delay_cook))
-        )
+        delay_seconds = self._staged_delay_seconds[cavity]
         if delay_seconds and mode in self._NO_DELAY_MODES:
             raise ValueError(f"{recipe} does not support a delayed start")
         if _first(self._data_dict, ("remoteStartEnable",)) is not True:
@@ -427,11 +418,6 @@ class Oven(BaseOven, Appliance):
         }
         if delay_seconds:
             payload["delayTimer"] = {"command": "run", "time": delay_seconds}
-        if rapid_preheat is not None:
-            payload["rapidPreheat"] = rapid_preheat
-        if meat_probe_target_temp is not None:
-            payload["meatProbeTargetTemperature"] = meat_probe_target_temp
-
         self._pending_power[cavity] = (True, time.monotonic() + 12)
         await self._send_command("run", payload)
         self._schedule_state_refresh()
