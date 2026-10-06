@@ -194,6 +194,27 @@ def test_unsupported_controls_remain_explicitly_unsupported() -> None:
     assert oven.get_sabbath_mode() is None
 
 
+def test_unvalidated_capability_honors_disconnected_presence() -> None:
+    mqtt = FakeMqttClient()
+    info = ApplianceInfo(
+        said="OVEN2",
+        name="Other Oven",
+        category="cooking",
+        model_number="OTHER",
+        serial_number="TEST2",
+    )
+    capabilities = {
+        "partNumber": "W99999999",
+        "cavities": {"primaryCavity": {"cavityType": "oven"}},
+    }
+    oven = Oven(cast(MqttClient, mqtt), info, capabilities)
+
+    oven.update_online(True)
+    assert oven.get_online() is True
+    oven.update_online(False)
+    assert oven.get_online() is False
+
+
 async def test_unvalidated_capability_does_not_claim_cook_control() -> None:
     mqtt = FakeMqttClient()
     info = ApplianceInfo(
