@@ -192,3 +192,30 @@ def test_unsupported_controls_remain_explicitly_unsupported() -> None:
 
     assert oven.get_kitchen_timer().get_state() is None
     assert oven.get_sabbath_mode() is None
+
+
+async def test_unvalidated_capability_does_not_claim_cook_control() -> None:
+    mqtt = FakeMqttClient()
+    info = ApplianceInfo(
+        said="OVEN2",
+        name="Other Oven",
+        category="cooking",
+        model_number="OTHER",
+        serial_number="TEST2",
+    )
+    capabilities = {
+        "partNumber": "W99999999",
+        "cavities": {"primaryCavity": {"cavityType": "oven"}},
+    }
+    oven = Oven(cast(MqttClient, mqtt), info, capabilities)
+    oven.update_state(
+        {
+            "remoteStartEnable": True,
+            "primaryCavity": {"cavityState": "idle"},
+        }
+    )
+    oven._schedule_state_refresh = lambda: None  # type: ignore[method-assign]
+
+    assert oven.supports_cook_control is False
+    assert await oven.set_cook(176.7, CookMode.Bake, Cavity.Upper) is False
+    assert mqtt.published == []
