@@ -109,8 +109,7 @@ class Oven(BaseOven, Appliance):
         super().__init__(mqttclient, appliance_info)
         self.raw_capabilities = raw_capabilities or {}
         self.supports_cook_control = (
-            self.raw_capabilities.get("partNumber")
-            in self._VALIDATED_COOK_CAPABILITIES
+            self.raw_capabilities.get("partNumber") in self._VALIDATED_COOK_CAPABILITIES
         )
         cavities = self.raw_capabilities.get("cavities", {})
         self._cavity_names = list(cavities) if isinstance(cavities, dict) else []
@@ -263,7 +262,7 @@ class Oven(BaseOven, Appliance):
             return mapping.get(value.replace("_", "").lower())
         try:
             return CavityState(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     @override
@@ -284,9 +283,7 @@ class Oven(BaseOven, Appliance):
 
     @override
     def get_cook_mode(self, cavity: Cavity = Cavity.Upper) -> CookMode | None:
-        value = self._cavity_value(
-            cavity, "cookMode", "recipeId", "recipeID", "mode"
-        )
+        value = self._cavity_value(cavity, "cookMode", "recipeId", "recipeID", "mode")
         mapping = {
             "standby": CookMode.Standby,
             "bake": CookMode.Bake,
@@ -309,7 +306,7 @@ class Oven(BaseOven, Appliance):
             return mapping.get(value.replace("_", "").replace("-", "").lower())
         try:
             return CookMode(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     def get_configured_cook_mode(self, cavity: Cavity) -> CookMode:
