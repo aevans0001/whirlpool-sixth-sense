@@ -58,7 +58,7 @@ class Oven(BaseOven, Appliance):
     KitchenAid KOED730SBE00 capability profile (W11779688).
     """
 
-    supports_cook_control = True
+    _VALIDATED_COOK_CAPABILITIES: ClassVar[set[str]] = {"W11779688"}
 
     _RECIPE_BY_MODE: ClassVar[dict[CookMode, str]] = {
         CookMode.Bake: "bake",
@@ -108,6 +108,10 @@ class Oven(BaseOven, Appliance):
     ):
         super().__init__(mqttclient, appliance_info)
         self.raw_capabilities = raw_capabilities or {}
+        self.supports_cook_control = (
+            self.raw_capabilities.get("partNumber")
+            in self._VALIDATED_COOK_CAPABILITIES
+        )
         cavities = self.raw_capabilities.get("cavities", {})
         self._cavity_names = list(cavities) if isinstance(cavities, dict) else []
         self._staged_modes = {
@@ -393,6 +397,9 @@ class Oven(BaseOven, Appliance):
         delay_cook: int | None = None,
         operation_type: CookOperation = CookOperation.Start,
     ) -> bool:
+        if not self.supports_cook_control:
+            return False
+
         recipe = self._RECIPE_BY_MODE.get(mode)
         if recipe is None:
             raise ValueError(f"Unsupported cook mode: {mode}")
