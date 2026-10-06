@@ -284,7 +284,9 @@ class Oven(BaseOven, Appliance):
 
     @override
     def get_cook_mode(self, cavity: Cavity = Cavity.Upper) -> CookMode | None:
-        value = self._cavity_value(\n            cavity, "cookMode", "recipeId", "recipeID", "mode"\n        )
+        value = self._cavity_value(
+            cavity, "cookMode", "recipeId", "recipeID", "mode"
+        )
         mapping = {
             "standby": CookMode.Standby,
             "bake": CookMode.Bake,
