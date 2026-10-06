@@ -54,8 +54,8 @@ class _UnavailableTimer(KitchenTimer):
 class Oven(BaseOven, Appliance):
     """AWS IoT oven implementation.
 
-    The command mappings are based on a physically validated
-    KitchenAid KOED730SBE00 capability profile (W11779688).
+    The command mappings are based on the physically validated
+    W11779688 capability profile.
     """
 
     _VALIDATED_COOK_CAPABILITIES: ClassVar[set[str]] = {"W11779688"}
@@ -136,10 +136,10 @@ class Oven(BaseOven, Appliance):
         await self._send_command("getState")
 
     def update_online(self, online: bool) -> None:
-        # KOED-series ovens can emit a disconnected presence event while
-        # continuing to publish state and accept commands.
-        if online:
-            super().update_online(True)
+        # The validated W11779688 profile can emit a disconnected presence
+        # event while continuing to publish state and accept commands.
+        if online or not self.supports_cook_control:
+            super().update_online(online)
 
     def _cavity_name(self, cavity: Cavity) -> str:
         preferred = (
