@@ -171,6 +171,10 @@ class Dryer(Appliance, ABC):
     def get_damp_notification_tone_volume(self) -> int | None:
         pass
 
+    async def set_damp_notification_tone_volume(self, volume: int) -> bool:
+        """Set the damp notification tone volume when supported."""
+        return False
+
     @abstractmethod
     def get_alert_tone_volume(self) -> int | None:
         pass
