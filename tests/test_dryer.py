@@ -1,4 +1,9 @@
+import pytest
+from aiointercept import aiointercept
+
 from whirlpool.appliancesmanager import AppliancesManager
+from whirlpool.auth import Auth
+from whirlpool.backendselector import BackendSelector
 from whirlpool.dryer import (
     Cycle,
     Dryness,
@@ -37,3 +42,37 @@ async def test_attributes(appliances_manager: AppliancesManager):
     assert dryer.get_alert_tone_volume() == 0
     assert dryer.get_temperature() == Temperature.Cool
     assert dryer.get_wrinkle_shield() == WrinkleShield.Off
+
+
+async def test_set_damp_notification_tone_volume(
+    appliances_manager: AppliancesManager,
+    auth: Auth,
+    backend_selector: BackendSelector,
+    aiointercept_mock: aiointercept,
+):
+    dryer = appliances_manager.dryers[0]
+    url = backend_selector.appliance_command_url
+    expected_json = {
+        "body": {"DrySys_OpSetDampNotificationToneVolume": "2"},
+        "header": {"said": dryer.said, "command": "setAttributes"},
+    }
+    aiointercept_mock.post(url, payload=expected_json)
+
+    assert await dryer.set_damp_notification_tone_volume(2)
+
+    aiointercept_mock.assert_called_with(
+        url=url,
+        method="POST",
+        data=None,
+        json=expected_json,
+        headers=auth.create_headers(),
+    )
+
+
+async def test_set_damp_notification_tone_volume_invalid(
+    appliances_manager: AppliancesManager,
+):
+    dryer = appliances_manager.dryers[0]
+
+    with pytest.raises(ValueError):
+        await dryer.set_damp_notification_tone_volume(3)
