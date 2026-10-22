@@ -300,6 +300,8 @@ class Dryer(BaseDryer, Appliance):
         """Set the damp notification tone volume."""
         if volume not in (0, 2, 4):
             raise ValueError(f"Unknown damp notification tone volume: {volume!r}")
+        if not self.has_attribute(ATTR_DAMP_NOTIFICATION_TONE_VOLUME):
+            return False
         return await self.send_attributes(
             {ATTR_DAMP_NOTIFICATION_TONE_VOLUME: str(volume)}
         )
