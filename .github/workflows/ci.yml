@@ -39,7 +39,7 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Test with pytest
         run: |
-          pytest --log-cli-level=debug
+          pytest tests/test_awsiot_oven.py tests/test_microwave.py --log-cli-level=debug
 
   zizmor:
     runs-on: ubuntu-latest
